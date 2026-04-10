@@ -1,4 +1,4 @@
-import re, collections
+import re, collections, os
 
 def get_stats(vocab):
     pairs = collections.defaultdict(int)
@@ -17,17 +17,39 @@ def merge_vocab(pair, v_in):
         v_out[w_out] = v_in[word]
     return v_out
 
-vocab = {
-    'l o w': 5,
-    'l o w e r': 2,
-    'w i d e s t': 3,
-    'n e w e s t': 6
-}
 
-num_merges = 6
-
-for i in range(num_merges):
-    pairs = get_stats(vocab)
-    best = max(pairs, key=lambda pair: (pairs.get(pair), pair))
-    vocab = merge_vocab(best, vocab)
+def train_bpe(
+    #input_path: str | os.PathLike,
+    vocab: dict[str],
+    vocab_size: int,
+    special_tokens: list[str],
+    **kwargs,
+):
+    for _ in range(num_merges):
+        pairs = get_stats(vocab)
+        best = max(pairs, key=lambda pair: (pairs.get(pair), pair))
+        vocab = merge_vocab(best, vocab)
     print(vocab)
+    print(pairs)
+
+if __name__ == "__main__":
+    with open("data/bpe_example.txt") as f:
+        text = f.read()
+        tokens = text.split(" ")
+        split_tokens = [' '.join(token) for token in tokens]
+
+    vocab = collections.defaultdict(int)
+    for key in split_tokens:
+        vocab[key] += 1
+    
+    hardcoded_vocab = {
+        'l o w': 5,
+        'l o w e r': 2,
+        'w i d e s t': 3,
+        'n e w e s t': 6
+    }
+
+    assert vocab == hardcoded_vocab
+
+    num_merges = 6
+    train_bpe(vocab=vocab, vocab_size=len(vocab), special_tokens="<|endoftext|>")
