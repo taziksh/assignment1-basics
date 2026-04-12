@@ -4,27 +4,35 @@ from multiprocessing import Pool
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
-def get_stats(vocab):
-    pairs = collections.defaultdict(int)
-    for word, freq in vocab.items():
-        for i in range(len(word)-1):
-            pairs[word[i], word[i+1]] += freq
-    return pairs 
-
-def merge_vocab(pair, vocab):
+def merge_vocab(pair, vocab, pairs):
     new_vocab = {}
     bigram = pair[0] + pair[1]
+
     for word in vocab:
         new_word = []
         i = 0
+        freq = vocab[word]
         while i < len(word):
             if word[i] == pair[0] and i < len(word)-1 and word[i+1] == pair[1]:
                 new_word.append(bigram)
+
+                if i > 0:
+                    pairs[word[i-1], bigram] += freq
+                    pairs[word[i-1], word[i]] -= freq
+
+                if i < len(word)-2:
+                    pairs[bigram, word[i+2]] += freq
+                    pairs[word[i+1], word[i+2]] -= freq
+
+                pairs[word[i], word[i+1]] -= freq
+                
                 i += 2
+
             else:
                 new_word.append(word[i])
                 i += 1
-        new_vocab[tuple(new_word)] = vocab[word]
+
+        new_vocab[tuple(new_word)] = freq
     return new_vocab
 
 def process_chunk(args):
@@ -53,6 +61,7 @@ def train_bpe(
     num_merges = vocab_size - 256 - len(special_tokens)
 
     with open(input_path, "rb") as f:
+        # TODO: note that the byte-encoded special token is hardcoded
         boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
 
     args_list = [(s, e, input_path, special_tokens) for s, e in zip(boundaries[:-1], boundaries[1:])]
@@ -70,11 +79,18 @@ def train_bpe(
     assert vocab_size > 256 + len(special_tokens)
 
     merges = []
+
+    pairs = collections.defaultdict(int)
+    for word, freq in vocab.items():
+        for i in range(len(word)-1):
+            pairs[word[i], word[i+1]] += freq
+
     for _ in range(num_merges):
-        pairs = get_stats(vocab)
         best = max(pairs, key=lambda pair: (pairs.get(pair), pair))
-        vocab = merge_vocab(best, vocab)
+        vocab = merge_vocab(best, vocab, pairs)
         merges.append(best)
+        pairs = collections.defaultdict(int, {k: v for k, v in pairs.items() if v > 0})
+        
     print(vocab)
     print(pairs)
 
