@@ -91,14 +91,28 @@ def train_bpe(
         merges.append(best)
         pairs = collections.defaultdict(int, {k: v for k, v in pairs.items() if v > 0})
         
-    print(vocab)
-    print(pairs)
+    final_vocab = {}
+    next_id = 0
+
+    for t in special_tokens:
+        final_vocab[next_id] = t.encode("utf-8")
+        next_id += 1
+
+    for i in range(256):
+        final_vocab[next_id] = bytes([i])
+        next_id += 1
+
+    for pair in merges:
+        final_vocab[next_id] = pair[0] + pair[1]
+        next_id += 1
+
+    return final_vocab, merges
 
 if __name__ == "__main__":
-    # input_path = "data/bpe_example.txt"
-    input_path = "data/TinyStoriesV2-GPT4-valid.txt"
+    input_path = "data/bpe_example.txt"
+    # input_path = "data/TinyStoriesV2-GPT4-valid.txt"
     special_tokens = ["<|endoftext|>"]
-    vocab_size = 260
+    vocab_size = 263
 
     start = time.time()
     train_bpe(input_path=input_path, vocab_size=vocab_size, special_tokens=special_tokens)
