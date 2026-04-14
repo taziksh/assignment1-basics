@@ -1,6 +1,10 @@
-import regex as re, collections, os, sys, time
+import regex as re, collections, os, time, pickle
+import argparse
 from typing import BinaryIO
 from multiprocessing import Pool
+from pathlib import Path
+from datetime import datetime
+import json
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
@@ -103,7 +107,7 @@ def train_bpe(
     special_tokens: list[str],
     **kwargs,
 ):
-    num_processes = kwargs.get("num_processes", 4)
+    num_processes = kwargs.get("num_processes", 8)
     num_merges = vocab_size - 256 - len(special_tokens)
 
     with open(input_path, "rb") as f:
@@ -155,11 +159,43 @@ def train_bpe(
     return final_vocab, merges
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--num_processes", type=int, default=8)
+    args = parser.parse_args()
+    num_processes = args.num_processes
+
     # input_path = "data/bpe_example.txt"
-    input_path = "data/TinyStoriesV2-GPT4-valid.txt"
+    # input_path = "data/TinyStoriesV2-GPT4-valid.txt"
+    input_path = "data/TinyStoriesV2-GPT4-train.txt"
     special_tokens = ["<|endoftext|>"]
-    vocab_size = 1000
+    vocab_size = 10000
 
     start = time.time()
-    train_bpe(input_path=input_path, vocab_size=vocab_size, special_tokens=special_tokens)
-    print(f"{time.time() - start:.2f}s")
+    final_vocab, merges = train_bpe(input_path=input_path, vocab_size=vocab_size, special_tokens=special_tokens, num_processes=num_processes)
+    duration = time.time() - start
+    print(f"{duration:.2f}s")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = f"runs/{Path(input_path).stem}_vocab{vocab_size}_{timestamp}"
+    os.makedirs(run_dir, exist_ok=True)
+
+    with open(os.path.join(run_dir, "vocab.pkl"), "wb") as f:
+        pickle.dump(final_vocab, f)
+    with open(os.path.join(run_dir, "merges.pkl"), "wb") as f:
+        pickle.dump(merges, f)
+
+    longest = max(final_vocab.values(), key=len)    
+
+
+    config = {
+        "input_path": str(input_path),
+        "vocab_size": vocab_size,
+        "special_tokens": special_tokens,
+        "num_processes": num_processes,
+        "duration_seconds": duration,
+        "longest_token": longest.decode("utf-8", errors="replace"),
+        "longest_token_length": len(longest)
+    }
+
+    with open(os.path.join(run_dir, "config.json"), "w") as f:
+        json.dump(config, f, indent=2)
