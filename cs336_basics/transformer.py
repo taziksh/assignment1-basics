@@ -56,3 +56,6 @@ class RMSNorm(nn.Module):
         rms = torch.sqrt((x**2).sum(dim=-1, keepdim=True)/self.d_model + self.eps)
         result = (x * self.g) / rms
         return result.to(in_dtype)
+    
+def SiLU(in_features: Float[torch.Tensor, " ..."]) -> Float[torch.Tensor, " ..."]:
+    return in_features * torch.sigmoid(in_features)
