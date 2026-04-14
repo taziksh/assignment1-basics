@@ -59,3 +59,32 @@ class RMSNorm(nn.Module):
     
 def SiLU(in_features: Float[torch.Tensor, " ..."]) -> Float[torch.Tensor, " ..."]:
     return in_features * torch.sigmoid(in_features)
+
+class SwiGLU(nn.Module):
+    def __init__(
+            self,
+            d_model: int,
+            d_ff: int,
+            device: torch.device | None = None,
+            dtype: torch.device | None = None
+    ) -> None:
+        super().__init__()
+        self.w1 = nn.Parameter(torch.empty((d_ff, d_model), device=device, dtype=dtype))
+        self.w2 = nn.Parameter(torch.empty((d_model, d_ff), device=device, dtype=dtype))
+        self.w3 = nn.Parameter(torch.empty((d_ff, d_model), device=device, dtype=dtype))
+
+    def forward(self, x: Float[torch.Tensor, " ... d_model"]):
+        return einsum(
+            self.w2, 
+            SiLU(einsum(
+                self.w1, 
+                x, 
+                "d_ff d_model, ... d_model -> d_ff ..."
+            )) * 
+            einsum(
+                self.w3, 
+                x, 
+                "d_ff d_model, ... d_model -> d_ff ..."
+            ),
+            "d_model d_ff, d_ff ... -> ... d_model"
+        )
