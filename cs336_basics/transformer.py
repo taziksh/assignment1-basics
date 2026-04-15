@@ -118,3 +118,20 @@ class RoPE(nn.Module):
 def softmax(in_features: Float[torch.Tensor, " ..."], dim: int) -> Float[torch.Tensor, " ..."]:
     c = torch.max(in_features, dim=dim, keepdim=True).values
     return torch.exp(in_features - c) / torch.sum(torch.exp(in_features - c), dim=dim, keepdim=True)
+
+def scaled_dot_product_attention(
+        Q: Float[torch.Tensor, " ... queries d_k"],
+        K: Float[torch.Tensor, " ... keys d_k"],
+        V: Float[torch.Tensor, " ... keys d_v"],
+        mask: Bool[torch.Tensor, " ... queries keys"] | None = None
+) -> Float[torch.Tensor, " ... queries d_v"]:
+    
+    d_k = Q.shape[-1]
+    scores = einsum(Q, K, " ... queries d_k, ... keys d_k -> ... queries keys")
+    scores = scores/math.sqrt(d_k)
+
+    if mask is not None:
+        scores.masked_fill_(~mask, -float('inf'))
+
+    sm = softmax(in_features=scores, dim=-1)
+    return einsum(sm, V, "... queries keys, ... keys d_v -> ... queries d_v")
