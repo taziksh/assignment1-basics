@@ -1,7 +1,7 @@
 import torch.nn as nn
 from jaxtyping import Bool, Float
 import torch
-from einops import einsum
+from einops import einsum, rearrange
 import math
 
 class Linear(nn.Module):
@@ -10,7 +10,7 @@ class Linear(nn.Module):
         in_features: int,
         out_features: int,
         device: torch.device | None = None,
-        dtype: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
         self.W = nn.Parameter(torch.empty((out_features, in_features), device=device, dtype=dtype))
@@ -42,7 +42,7 @@ class RMSNorm(nn.Module):
             d_model: int,
             eps: float = 1e-5,
             device: torch.device | None = None,
-            dtype: torch.device | None = None
+            dtype: torch.dtype | None = None
     ):
         super().__init__()
         self.d_model = d_model
@@ -135,3 +135,29 @@ def scaled_dot_product_attention(
 
     sm = softmax(in_features=scores, dim=-1)
     return einsum(sm, V, "... queries keys, ... keys d_v -> ... queries d_v")
+
+class MHASelfAttention(nn.Module):
+    def __init__(
+            self,
+            d_model: int,
+            num_heads: int
+    ):
+        super().__init__()
+        self.q_proj = Linear(d_model, d_model)
+        self.k_proj = Linear(d_model, d_model)
+        self.v_proj = Linear(d_model, d_model)
+        self.o_proj = Linear(d_model, d_model)
+        self.num_heads = num_heads
+        self.d_model = d_model
+        self.d_k = d_model//num_heads
+    
+    def forward(self, x: Float[torch.Tensor, " ... s d_model"]) -> Float[torch.Tensor, " ... s d_model"]:
+        Q = rearrange(self.q_proj(x), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
+        K = rearrange(self.k_proj(x), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
+        V = rearrange(self.v_proj(x), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
+        
+        s = x.shape[-2]
+        mask = torch.tril(torch.ones(s, s, device=x.device, dtype=bool))
+        attn = scaled_dot_product_attention(Q, K, V, mask)
+        attn = rearrange(attn, " ... h s d_k -> ... s (h d_k)")
+        return self.o_proj(attn)
