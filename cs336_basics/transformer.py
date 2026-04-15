@@ -114,3 +114,7 @@ class RoPE(nn.Module):
         x_even_new = x_even * cos_pos - x_odd * sin_pos
         x_odd_new = x_even * sin_pos + x_odd * cos_pos
         return torch.stack([x_even_new, x_odd_new], dim=-1).flatten(-2, -1)
+    
+def softmax(in_features: Float[torch.Tensor, " ..."], dim: int) -> Float[torch.Tensor, " ..."]:
+    c = torch.max(in_features, dim=dim, keepdim=True).values
+    return torch.exp(in_features - c) / torch.sum(torch.exp(in_features - c), dim=dim, keepdim=True)
