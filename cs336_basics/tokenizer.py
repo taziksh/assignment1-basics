@@ -5,8 +5,89 @@ from multiprocessing import Pool
 from pathlib import Path
 from datetime import datetime
 import json
+from typing import Iterable, Iterator
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
+class Tokenizer:
+    def __init__(
+            self,
+            vocab: dict[int, bytes],
+            merges: list[tuple[bytes, bytes]],
+            special_tokens: list[str] | None = None,
+    ) -> None:
+        self.vocab = vocab
+        self.merges = merges
+        self.special_tokens = special_tokens or []
+        self.special_token_regex = ""
+        self.reverse_vocab = {v: k for k, v in self.vocab.items()}
+
+        if special_tokens:
+            self.special_tokens.sort(key=len, reverse=True)
+            self.special_token_regex = "|".join(re.escape(t) for t in self.special_tokens)   
+        self.merge_order = {pair: i for i, pair in enumerate(self.merges)}     
+
+    @classmethod
+    def from_files(
+            cls,
+            vocab_filepath: str,
+            merges_filepath: str,
+            special_tokens: list[str] | None = None
+    ) -> None:
+        with open(vocab_filepath, "rb") as f:
+            vocab = pickle.load(f)
+        with open(merges_filepath, "rb") as f:
+            merges = pickle.load(f)
+        return cls(vocab, merges, special_tokens)
+
+    def _apply_merges(self, pt: list[bytes]) -> list[bytes]:
+        while True:
+            candidate_pairs = [pair for pair in zip(pt, pt[1:]) if pair in self.merge_order]
+            if not candidate_pairs: 
+                break
+
+            min_pair = min(candidate_pairs, key=self.merge_order.get)
+            new_pt = []
+            i = 0
+
+            while i < len(pt):
+                if pt[i] == min_pair[0] and i < len(pt)-1 and pt[i+1] == min_pair[1]:
+                    new_pt.append(min_pair[0] + min_pair[1])
+                    i += 2
+                else:
+                    new_pt.append(pt[i])
+                    i += 1
+            pt = new_pt
+        return pt
+
+    def encode(self, text: str) -> list[int]:
+        token_ids = []
+        if self.special_token_regex:
+            text_chunks = re.split(f"({self.special_token_regex})", text)
+        else:
+            text_chunks = [text]
+        for chunk in text_chunks:
+            if chunk in self.special_tokens:
+                token_ids.append(self.reverse_vocab[chunk.encode('utf-8')])
+                continue
+            tokens = re.finditer(PAT, chunk)
+            pre_tokens = [[bytes([byte]) for byte in token.group().encode('utf-8')] for token in tokens]
+            for pt in pre_tokens:
+                merged = self._apply_merges(pt)
+                token_ids.extend(self.reverse_vocab[b] for b in merged)
+
+        return token_ids
+
+    def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
+        for chunk in iterable:
+            yield from self.encode(chunk)
+
+    def decode(self, ids: list[int]) -> str:
+        byte_array = []
+        for id in ids:
+            byte_array.append(self.vocab[id])
+
+        return b"".join(byte_array).decode("utf-8", errors="replace")
 
 def find_chunk_boundaries(
     file: BinaryIO,
@@ -95,7 +176,7 @@ def process_chunk(args):
     docs = re.split(special_token_regex, chunk)
     for doc in docs:
         tokens = re.finditer(PAT, doc)
-        byte_tokens = [tuple(bytes([b]) for b in token.group().encode('utf-8')) for token in tokens]        
+        byte_tokens = [tuple(bytes([byte]) for byte in token.group().encode('utf-8')) for token in tokens]        
 
         for key in byte_tokens:
             local_vocab[key] += 1
@@ -166,9 +247,11 @@ if __name__ == "__main__":
 
     # input_path = "data/bpe_example.txt"
     # input_path = "data/TinyStoriesV2-GPT4-valid.txt"
-    input_path = "data/TinyStoriesV2-GPT4-train.txt"
+    # input_path = "data/TinyStoriesV2-GPT4-train.txt"
+
+    input_path = "data/owt_valid.txt"
     special_tokens = ["<|endoftext|>"]
-    vocab_size = 10000
+    vocab_size = 32000
 
     start = time.time()
     final_vocab, merges = train_bpe(input_path=input_path, vocab_size=vocab_size, special_tokens=special_tokens, num_processes=num_processes)
