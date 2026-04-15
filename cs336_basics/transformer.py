@@ -1,5 +1,5 @@
 import torch.nn as nn
-from jaxtyping import Bool, Float
+from jaxtyping import Bool, Float, Int
 import torch
 from einops import einsum, rearrange
 import math
@@ -96,7 +96,7 @@ class RoPE(nn.Module):
             d_k: int,
             max_seq_len: int,
             device: torch.device | None = None
-    ):
+    ) -> None:
         super().__init__()
         i = torch.arange(max_seq_len, device=device).unsqueeze(-1)
         k = torch.arange(1, d_k/2+1, device=device).unsqueeze(0)
@@ -140,8 +140,9 @@ class MHASelfAttention(nn.Module):
     def __init__(
             self,
             d_model: int,
-            num_heads: int
-    ):
+            num_heads: int,
+            rope: RoPE | None = None
+    ) -> None:
         super().__init__()
         self.q_proj = Linear(d_model, d_model)
         self.k_proj = Linear(d_model, d_model)
@@ -150,14 +151,23 @@ class MHASelfAttention(nn.Module):
         self.num_heads = num_heads
         self.d_model = d_model
         self.d_k = d_model//num_heads
+        self.rope = rope
     
-    def forward(self, x: Float[torch.Tensor, " ... s d_model"]) -> Float[torch.Tensor, " ... s d_model"]:
+    def forward(self, 
+            x: Float[torch.Tensor, " ... s d_model"],
+            token_positions: Int[torch.Tensor, " ... s"] | None = None
+        ) -> Float[torch.Tensor, " ... s d_model"]:
         Q = rearrange(self.q_proj(x), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
         K = rearrange(self.k_proj(x), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
         V = rearrange(self.v_proj(x), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
-        
         s = x.shape[-2]
-        mask = torch.tril(torch.ones(s, s, device=x.device, dtype=bool))
+        mask = torch.tril(torch.ones(s, s, device=x.device, dtype=bool))        
+
+        if self.rope:
+            Q = self.rope(Q, token_positions)
+            K = self.rope(K, token_positions)
+
         attn = scaled_dot_product_attention(Q, K, V, mask)
         attn = rearrange(attn, " ... h s d_k -> ... s (h d_k)")
         return self.o_proj(attn)
+
