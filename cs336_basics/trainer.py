@@ -1,6 +1,6 @@
 from jaxtyping import Float, Int
 from collections.abc import Callable
-from typing import Optional
+from typing import Optional, Iterable
 import torch
 import math
 
@@ -63,3 +63,19 @@ def get_lr_cosine_schedule(
     else:
         curr_lr = min_learning_rate + (1/2) * (1 + math.cos(math.pi * (it-warmup_iters)/(cosine_cycle_iters-warmup_iters))) * (max_learning_rate - min_learning_rate)
     return curr_lr
+
+def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
+    eps = 10e-6
+    total_norm_sq = 0
+    for p in parameters:
+        if p.grad is None: continue
+        total_norm_sq += torch.sum(p.grad**2)
+
+    total_norm = torch.sqrt(total_norm_sq)
+    if total_norm < max_l2_norm:
+        return
+
+    for p in parameters:
+        if p.grad is None: continue
+        p.grad *= (max_l2_norm)/(total_norm+eps)
+    
