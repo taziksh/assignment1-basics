@@ -3,6 +3,7 @@ from collections.abc import Callable
 from typing import Optional, Iterable
 import torch
 import math
+import numpy.typing as npt
 
 def cross_entropy(inputs: Float[torch.Tensor, " batch_size vocab_size"], targets: Int[torch.Tensor, " batch_size"]) -> Float[torch.Tensor, ""]:
     batch_size = targets.shape[-1]
@@ -78,4 +79,10 @@ def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: flo
     for p in parameters:
         if p.grad is None: continue
         p.grad *= (max_l2_norm)/(total_norm+eps)
-    
+
+def get_batch(dataset: npt.NDArray, batch_size: int, context_length: int, device: str) -> tuple[torch.Tensor, torch.Tensor]:
+    starts = torch.randint(low=0, high=len(dataset)-context_length, size=(batch_size, 1))
+    offsets = torch.arange(start=0, end=context_length).unsqueeze(dim=0)
+    inputs = starts + offsets
+    outputs = inputs + 1
+    return torch.from_numpy(dataset[inputs.to('cpu')]).to(device), torch.from_numpy(dataset[outputs.to('cpu')]).to(device)
