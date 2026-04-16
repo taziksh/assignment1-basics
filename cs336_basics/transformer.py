@@ -186,14 +186,38 @@ class TransformerBlock(nn.Module):
         y = x + self.attn(input_features=self.ln1(x), token_positions=token_positions)
         return y + self.ffn(self.ln2(y))
     
-# class TransformerLM(nn.Module):
-#     def __init__(
-#             self,
-#             vocab_size: int,
-#             context_length: int,
-#             d_model: int,
-#             num_layers: int,
-#             num_heads: int,
-#             d_ff: int,
-#             rope_theta: float
-#     ) -> None:
+class TransformerLM(nn.Module):
+    def __init__(
+            self,
+            vocab_size: int,
+            context_length: int,
+            d_model: int,
+            num_layers: int,
+            num_heads: int,
+            d_ff: int,
+            rope_theta: float
+    ) -> None:
+        super().__init__()
+
+        self.token_embeddings = Embedding(num_embeddings=vocab_size, embedding_dim=d_model)
+
+        self.layers = nn.ModuleList()
+        for _ in range(num_layers):
+            block = TransformerBlock(d_model, num_heads, d_ff, max_seq_len=context_length, theta=rope_theta)
+            self.layers.append(block)
+        
+        self.ln_final = RMSNorm(d_model)
+
+        self.lm_head = Linear(d_model, vocab_size)  
+
+    def forward(self, in_indices: Int[torch.Tensor, " b s"]) -> Float[torch.Tensor, " b s vocab_size"]:
+        out = self.token_embeddings(in_indices)
+        
+        for layer in self.layers:
+            out = layer(out)
+        
+        out = self.ln_final(out)
+
+        out = self.lm_head(out)
+
+        return out
