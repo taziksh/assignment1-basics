@@ -1,7 +1,49 @@
 from jaxtyping import Float, Int
+from collections.abc import Callable
+from typing import Optional
 import torch
+import math
 
 def cross_entropy(inputs: Float[torch.Tensor, " batch_size vocab_size"], targets: Int[torch.Tensor, " batch_size"]) -> Float[torch.Tensor, ""]:
     batch_size = targets.shape[-1]
     max_logit = torch.max(inputs, dim=-1, keepdim=True).values
     return torch.mean(max_logit.squeeze(dim=-1) + torch.log(torch.sum(torch.exp(inputs-max_logit), dim=-1)) - inputs[torch.arange(batch_size), targets])
+
+class AdamWOptim(torch.optim.Optimizer):
+    def __init__(self, params, betas, eps, weight_decay, lr=0.001):
+        defaults = {
+            "lr": lr,
+            "weight_decay": weight_decay,
+            "beta_1": betas[0],
+            "beta_2": betas[1],
+            "eps": eps,
+        }
+        super().__init__(params, defaults)
+
+    def step(self, closure: Optional[Callable] = None):
+        loss = None if closure is None else closure()
+        for group in self.param_groups:
+            lr = group["lr"]
+            weight_decay = group["weight_decay"]
+            lr = group["lr"]
+            beta_1 = group["beta_1"]
+            beta_2 = group["beta_2"]
+            eps = group["eps"]
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+
+                state = self.state[p]
+                if not state:
+                    state["m"] = torch.zeros_like(p)
+                    state["v"] = torch.zeros_like(p)
+                    state["t"] = 1
+
+                alpha_t = lr * math.sqrt(1-beta_2**state["t"]) / (1-beta_1**state["t"])
+                p.data -= lr * weight_decay * p.data
+                state["m"] = beta_1 * state["m"] + (1 - beta_1) * p.grad
+                state["v"] = beta_2 * state["v"] + (1 - beta_2) * p.grad**2
+                p.data -= alpha_t * state["m"] / (torch.sqrt(state["v"]) + eps)
+                state["t"] += 1                   
+        
+        return loss
