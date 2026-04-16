@@ -13,12 +13,12 @@ class Linear(nn.Module):
         dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
-        self.W = nn.Parameter(torch.empty((out_features, in_features), device=device, dtype=dtype))
+        self.weight = nn.Parameter(torch.empty((out_features, in_features), device=device, dtype=dtype))
         stdev = math.sqrt(2/(in_features+out_features))
-        nn.init.trunc_normal_(self.W, mean=0, std=stdev, a=-3*stdev, b=3*stdev)
+        nn.init.trunc_normal_(self.weight, mean=0, std=stdev, a=-3*stdev, b=3*stdev)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        y = einsum(x, self.W, "... d_in, d_out d_in -> ... d_out")
+        y = einsum(x, self.weight, "... d_in, d_out d_in -> ... d_out")
         return y
 
 class Embedding(nn.Module):
@@ -30,11 +30,11 @@ class Embedding(nn.Module):
         dtype: torch.dtype | None = None
     ) -> None:
         super().__init__()
-        self.W = nn.Parameter(torch.empty((num_embeddings, embedding_dim), device=device, dtype=dtype))
-        nn.init.trunc_normal_(self.W, mean=0, std=1, a=-3, b=3)
+        self.weight = nn.Parameter(torch.empty((num_embeddings, embedding_dim), device=device, dtype=dtype))
+        nn.init.trunc_normal_(self.weight, mean=0, std=1, a=-3, b=3)
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
-        return self.W[token_ids]
+        return self.weight[token_ids]
     
 class RMSNorm(nn.Module):
     def __init__(
@@ -47,14 +47,14 @@ class RMSNorm(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.eps = eps
-        self.g = nn.Parameter(torch.ones((d_model), device=device, dtype=dtype))
+        self.weight = nn.Parameter(torch.ones((d_model), device=device, dtype=dtype))
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         in_dtype = x.dtype
         x = x.to(torch.float32)
 
         rms = torch.sqrt((x**2).sum(dim=-1, keepdim=True)/self.d_model + self.eps)
-        result = (x * self.g) / rms
+        result = (x * self.weight) / rms
         return result.to(in_dtype)
     
 def SiLU(in_features: Float[torch.Tensor, " ..."]) -> Float[torch.Tensor, " ..."]:
@@ -69,25 +69,12 @@ class SwiGLU(nn.Module):
             dtype: torch.device | None = None
     ) -> None:
         super().__init__()
-        self.w1 = nn.Parameter(torch.empty((d_ff, d_model), device=device, dtype=dtype))
-        self.w2 = nn.Parameter(torch.empty((d_model, d_ff), device=device, dtype=dtype))
-        self.w3 = nn.Parameter(torch.empty((d_ff, d_model), device=device, dtype=dtype))
+        self.w1 = Linear(d_model, d_ff)
+        self.w2 = Linear(d_ff, d_model)
+        self.w3 = Linear(d_model, d_ff)
 
     def forward(self, x: Float[torch.Tensor, " ... d_model"]):
-        return einsum(
-            self.w2, 
-            SiLU(einsum(
-                self.w1, 
-                x, 
-                "d_ff d_model, ... d_model -> d_ff ..."
-            )) * 
-            einsum(
-                self.w3, 
-                x, 
-                "d_ff d_model, ... d_model -> d_ff ..."
-            ),
-            "d_model d_ff, d_ff ... -> ... d_model"
-        )
+        return self.w2(SiLU(self.w1(x)) * self.w3(x))
     
 class RoPE(nn.Module):
     def __init__(
@@ -147,21 +134,21 @@ class MHASelfAttention(nn.Module):
         self.q_proj = Linear(d_model, d_model)
         self.k_proj = Linear(d_model, d_model)
         self.v_proj = Linear(d_model, d_model)
-        self.o_proj = Linear(d_model, d_model)
+        self.output_proj = Linear(d_model, d_model)
         self.num_heads = num_heads
         self.d_model = d_model
         self.d_k = d_model//num_heads
         self.rope = rope
     
     def forward(self, 
-            x: Float[torch.Tensor, " ... s d_model"],
+            input_features: Float[torch.Tensor, " ... s d_model"],
             token_positions: Int[torch.Tensor, " ... s"] | None = None
         ) -> Float[torch.Tensor, " ... s d_model"]:
-        Q = rearrange(self.q_proj(x), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
-        K = rearrange(self.k_proj(x), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
-        V = rearrange(self.v_proj(x), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
-        s = x.shape[-2]
-        mask = torch.tril(torch.ones(s, s, device=x.device, dtype=bool))        
+        Q = rearrange(self.q_proj(input_features), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
+        K = rearrange(self.k_proj(input_features), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
+        V = rearrange(self.v_proj(input_features), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
+        s = input_features.shape[-2]
+        mask = torch.tril(torch.ones(s, s, device=input_features.device, dtype=bool))        
 
         if self.rope:
             Q = self.rope(Q, token_positions)
@@ -169,5 +156,44 @@ class MHASelfAttention(nn.Module):
 
         attn = scaled_dot_product_attention(Q, K, V, mask)
         attn = rearrange(attn, " ... h s d_k -> ... s (h d_k)")
-        return self.o_proj(attn)
+        return self.output_proj(attn)
 
+class TransformerBlock(nn.Module):
+    def __init__(
+            self,
+            d_model: int,
+            num_heads: int,
+            d_ff: int,
+            max_seq_len: int,
+            theta: float
+    ) -> None:
+        super().__init__()
+        
+        self.ln1 = RMSNorm(d_model)
+
+        d_k = d_model//num_heads
+        rope = RoPE(theta, d_k, max_seq_len)
+        self.attn = MHASelfAttention(d_model, num_heads, rope)
+        
+        self.ln2 = RMSNorm(d_model)
+
+        self.ffn = SwiGLU(d_model, d_ff)
+
+
+    def forward(self, x):
+        s = x.shape[-2]
+        token_positions = torch.arange(s)
+        y = x + self.attn(input_features=self.ln1(x), token_positions=token_positions)
+        return y + self.ffn(self.ln2(y))
+    
+# class TransformerLM(nn.Module):
+#     def __init__(
+#             self,
+#             vocab_size: int,
+#             context_length: int,
+#             d_model: int,
+#             num_layers: int,
+#             num_heads: int,
+#             d_ff: int,
+#             rope_theta: float
+#     ) -> None:
