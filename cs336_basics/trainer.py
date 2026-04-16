@@ -1,9 +1,10 @@
 from jaxtyping import Float, Int
 from collections.abc import Callable
-from typing import Optional, Iterable
+from typing import Optional, Iterable, IO, BinaryIO, Any
 import torch
 import math
 import numpy.typing as npt
+import os
 
 def cross_entropy(inputs: Float[torch.Tensor, " batch_size vocab_size"], targets: Int[torch.Tensor, " batch_size"]) -> Float[torch.Tensor, ""]:
     batch_size = targets.shape[-1]
@@ -86,3 +87,27 @@ def get_batch(dataset: npt.NDArray, batch_size: int, context_length: int, device
     inputs = starts + offsets
     outputs = inputs + 1
     return torch.from_numpy(dataset[inputs.to('cpu')]).to(device), torch.from_numpy(dataset[outputs.to('cpu')]).to(device)
+
+
+def save_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    iteration: int,
+    out: str | os.PathLike | BinaryIO | IO[bytes]
+):
+    result = {
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "iteration": iteration
+    }
+    torch.save(result, out)
+
+def load_checkpoint(
+    src: str | os.PathLike | BinaryIO | IO[bytes],
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer
+) -> int:
+    result = torch.load(src)
+    model.load_state_dict(result["model"])
+    optimizer.load_state_dict(result["optimizer"])
+    return result["iteration"]
