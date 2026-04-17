@@ -11,8 +11,9 @@ def cross_entropy(inputs: Float[torch.Tensor, " batch_size vocab_size"], targets
     max_logit = torch.max(inputs, dim=-1, keepdim=True).values
     return torch.mean(max_logit.squeeze(dim=-1) + torch.log(torch.sum(torch.exp(inputs-max_logit), dim=-1)) - inputs[torch.arange(batch_size), targets])
 
+# TODO: move to new file, optim.py
 class AdamWOptim(torch.optim.Optimizer):
-    def __init__(self, params, betas, eps, weight_decay, lr=0.001):
+    def __init__(self, params, betas, eps, weight_decay, lr):
         defaults = {
             "lr": lr,
             "weight_decay": weight_decay,
@@ -86,7 +87,7 @@ def get_batch(dataset: npt.NDArray, batch_size: int, context_length: int, device
     offsets = torch.arange(start=0, end=context_length).unsqueeze(dim=0)
     inputs = starts + offsets
     outputs = inputs + 1
-    return torch.from_numpy(dataset[inputs.to('cpu')]).to(device), torch.from_numpy(dataset[outputs.to('cpu')]).to(device)
+    return torch.from_numpy(dataset[inputs.to('cpu')]).int().to(device), torch.from_numpy(dataset[outputs.to('cpu')]).int().to(device)
 
 
 def save_checkpoint(
