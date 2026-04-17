@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime
 import json
 from typing import Iterable, Iterator
+from functools import lru_cache
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
@@ -40,7 +41,9 @@ class Tokenizer:
             merges = pickle.load(f)
         return cls(vocab, merges, special_tokens)
 
-    def _apply_merges(self, pt: list[bytes]) -> list[bytes]:
+    @lru_cache(maxsize=100_000)
+    def _apply_merges(self, pt: tuple[bytes, ...]) -> tuple[bytes, ...]:
+        pt = list(pt)
         while True:
             candidate_pairs = [pair for pair in zip(pt, pt[1:]) if pair in self.merge_order]
             if not candidate_pairs: 
@@ -58,7 +61,7 @@ class Tokenizer:
                     new_pt.append(pt[i])
                     i += 1
             pt = new_pt
-        return pt
+        return tuple(pt)
 
     def encode(self, text: str) -> list[int]:
         token_ids = []
@@ -71,7 +74,7 @@ class Tokenizer:
                 token_ids.append(self.reverse_vocab[chunk.encode('utf-8')])
                 continue
             tokens = re.finditer(PAT, chunk)
-            pre_tokens = [[bytes([byte]) for byte in token.group().encode('utf-8')] for token in tokens]
+            pre_tokens = [tuple(bytes([byte]) for byte in token.group().encode('utf-8')) for token in tokens]
             for pt in pre_tokens:
                 merged = self._apply_merges(pt)
                 token_ids.extend(self.reverse_vocab[b] for b in merged)
@@ -246,10 +249,10 @@ if __name__ == "__main__":
     num_processes = args.num_processes
 
     # input_path = "data/bpe_example.txt"
-    # input_path = "data/TinyStoriesV2-GPT4-valid.txt"
+    input_path = "data/TinyStoriesV2-GPT4-valid.txt"
     # input_path = "data/TinyStoriesV2-GPT4-train.txt"
-
-    input_path = "data/owt_valid.txt"
+    # input_path = "data/owt_valid.txt"
+    # input_path = "data/owt_train.txt"
     special_tokens = ["<|endoftext|>"]
     vocab_size = 32000
 
