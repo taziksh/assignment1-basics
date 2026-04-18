@@ -7,8 +7,23 @@ from datetime import datetime
 import json
 from typing import Iterable, Iterator
 from functools import lru_cache
+from collections import defaultdict
+import heapq
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
+class Reversed():
+    def __init__(self, val):
+        self.val = val
+    
+    def __lt__(self, other):
+        return self.val > other.val
+    
+    def __gt__(self, other):
+        return self.val < other.val
+
+    def __eq__(self, other):
+        return self.val == other.val
 
 class Tokenizer:
     def __init__(
@@ -138,41 +153,44 @@ def find_chunk_boundaries(
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
 
-def merge_vocab(pair, vocab, pairs):
-    new_vocab = {}
+def merge_vocab(pair, vocab, pairs, pair_to_words, heap):
+    new_vocab = dict(vocab)
     bigram = pair[0] + pair[1]
+    curr_words = list(pair_to_words[pair])
 
-    for word in vocab:
+    for word in curr_words:
         new_word = []
         i = 0
         freq = vocab[word]
         while i < len(word):
             if word[i] == pair[0] and i < len(word)-1 and word[i+1] == pair[1]:
-                new_word.append(bigram)
-
-                if i > 0:
-                    pairs[word[i-1], bigram] += freq
-                    pairs[word[i-1], word[i]] -= freq
-
-                if i < len(word)-2:
-                    pairs[bigram, word[i+2]] += freq
-                    pairs[word[i+1], word[i+2]] -= freq
-
-                pairs[word[i], word[i+1]] -= freq
-                
+                new_word.append(bigram)                
                 i += 2
-
             else:
                 new_word.append(word[i])
                 i += 1
 
+        del new_vocab[word]
         new_vocab[tuple(new_word)] = freq
+
+        for i in range(len(word)-1):
+            old_pair = (word[i], word[i+1])
+            pairs[old_pair] -= freq
+            pair_to_words[old_pair].discard(word)
+            heapq.heappush(heap, (-pairs[old_pair], Reversed(old_pair)))
+        
+        for i in range(len(new_word)-1):
+            new_pair = (new_word[i], new_word[i+1])
+            pairs[new_pair] += freq
+            pair_to_words[new_pair].add(tuple(new_word))
+            heapq.heappush(heap, (-pairs[new_pair], Reversed(new_pair)))
+
     return new_vocab
 
 def process_chunk(args):
     start, end, input_path, special_tokens = args
     special_token_regex = "|".join(re.escape(t) for t in special_tokens)
-    local_vocab = collections.defaultdict(int)
+    local_vocab = defaultdict(int)
     with open(input_path, "rb") as f:
         f.seek(start)
         chunk = f.read(end - start).decode("utf-8", errors="ignore")
@@ -205,7 +223,7 @@ def train_bpe(
         with Pool(num_processes) as pool:
             results = pool.map(process_chunk, args_list)
 
-    vocab = collections.defaultdict(int)
+    vocab = defaultdict(int)
     for local_vocab in results:
         for key, count in local_vocab.items():
             vocab[key] += count
@@ -213,17 +231,30 @@ def train_bpe(
     assert vocab_size > 256 + len(special_tokens)
 
     merges = []
+    pair_to_words = defaultdict(set)
 
-    pairs = collections.defaultdict(int)
+    pairs = defaultdict(int)
     for word, freq in vocab.items():
         for i in range(len(word)-1):
             pairs[word[i], word[i+1]] += freq
+            pair_to_words[(word[i], word[i+1])].add(word)
+
+    heap = [(-count, Reversed(pair)) for pair, count in pairs.items()]
+    heapq.heapify(heap)
 
     for _ in range(num_merges):
-        best = max(pairs, key=lambda pair: (pairs.get(pair), pair))
-        vocab = merge_vocab(best, vocab, pairs)
+        if not pairs:
+            break
+        while heap:
+            neg_count, reversed_pair = heapq.heappop(heap)
+            pair = reversed_pair.val
+            if pairs[pair] == -neg_count:
+                best = pair
+                break
+
+        vocab = merge_vocab(best, vocab, pairs, pair_to_words, heap)
         merges.append(best)
-        pairs = collections.defaultdict(int, {k: v for k, v in pairs.items() if v > 0})
+        pairs = defaultdict(int, {k: v for k, v in pairs.items() if v > 0})
         
     final_vocab = {}
     next_id = 0
