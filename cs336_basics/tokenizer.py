@@ -14,7 +14,7 @@ from tqdm import tqdm
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 BYTES = [bytes([i]) for i in range(256)]
 
-class Reversed():
+class Reversed:
     def __init__(self, val):
         self.val = val
     
@@ -234,8 +234,8 @@ def train_bpe(
 
     vocab = defaultdict(int)
     for local_vocab in results:
-        for key, count in local_vocab.items():
-            vocab[key] += count
+        for token, freq in local_vocab.items():
+            vocab[token] += freq
 
     assert vocab_size > 256 + len(special_tokens)
 
