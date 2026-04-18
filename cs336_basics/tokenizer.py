@@ -11,6 +11,7 @@ from collections import defaultdict
 import heapq
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+BYTES = [bytes([i]) for i in range(256)]
 
 class Reversed():
     def __init__(self, val):
@@ -196,7 +197,7 @@ def process_chunk(args):
     docs = re.split(special_token_regex, chunk)
     for doc in docs:
         tokens = re.finditer(PAT, doc)
-        byte_tokens = [tuple(bytes([byte]) for byte in token.group().encode('utf-8')) for token in tokens]        
+        byte_tokens = [tuple(BYTES[byte] for byte in token.group().encode('utf-8')) for token in tokens]        
 
         for key in byte_tokens:
             local_vocab[key] += 1
