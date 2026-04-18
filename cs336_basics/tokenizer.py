@@ -158,6 +158,7 @@ def find_chunk_boundaries(
 def merge_vocab(pair, vocab, pairs, pair_to_words, heap):
     bigram = pair[0] + pair[1]
     curr_words = list(pair_to_words[pair])
+    changed_pairs = set()
 
     for word in curr_words:
         new_word = []
@@ -178,13 +179,16 @@ def merge_vocab(pair, vocab, pairs, pair_to_words, heap):
             old_pair = (word[i], word[i+1])
             pairs[old_pair] -= freq
             pair_to_words[old_pair].discard(word)
-            heapq.heappush(heap, (-pairs[old_pair], Reversed(old_pair)))
+            changed_pairs.add(old_pair)
         
         for i in range(len(new_word)-1):
             new_pair = (new_word[i], new_word[i+1])
             pairs[new_pair] += freq
             pair_to_words[new_pair].add(tuple(new_word))
-            heapq.heappush(heap, (-pairs[new_pair], Reversed(new_pair)))
+            changed_pairs.add(new_pair)
+    
+    for p in changed_pairs:
+        heapq.heappush(heap, (-pairs[p], Reversed(p)))
 
     return vocab
 
