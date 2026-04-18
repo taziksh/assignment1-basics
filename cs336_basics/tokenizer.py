@@ -254,7 +254,6 @@ def train_bpe(
 
         vocab = merge_vocab(best, vocab, pairs, pair_to_words, heap)
         merges.append(best)
-        pairs = defaultdict(int, {k: v for k, v in pairs.items() if v > 0})
         
     final_vocab = {}
     next_id = 0
