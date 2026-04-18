@@ -14,25 +14,27 @@ from tqdm import tqdm
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 BYTES = [bytes([i]) for i in range(256)]
 
+
 class Reversed:
     def __init__(self, val):
         self.val = val
-    
+
     def __lt__(self, other):
         return self.val > other.val
-    
+
     def __gt__(self, other):
         return self.val < other.val
 
     def __eq__(self, other):
         return self.val == other.val
 
+
 class Tokenizer:
     def __init__(
-            self,
-            vocab: dict[int, bytes],
-            merges: list[tuple[bytes, bytes]],
-            special_tokens: list[str] | None = None,
+        self,
+        vocab: dict[int, bytes],
+        merges: list[tuple[bytes, bytes]],
+        special_tokens: list[str] | None = None,
     ) -> None:
         self.vocab = vocab
         self.merges = merges
@@ -42,16 +44,11 @@ class Tokenizer:
 
         if special_tokens:
             self.special_tokens.sort(key=len, reverse=True)
-            self.special_token_regex = "|".join(re.escape(t) for t in self.special_tokens)   
-        self.merge_order = {pair: i for i, pair in enumerate(self.merges)}     
+            self.special_token_regex = "|".join(re.escape(t) for t in self.special_tokens)
+        self.merge_order = {pair: i for i, pair in enumerate(self.merges)}
 
     @classmethod
-    def from_files(
-            cls,
-            vocab_filepath: str,
-            merges_filepath: str,
-            special_tokens: list[str] | None = None
-    ) -> None:
+    def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None) -> None:
         with open(vocab_filepath, "rb") as f:
             vocab = pickle.load(f)
         with open(merges_filepath, "rb") as f:
@@ -63,7 +60,7 @@ class Tokenizer:
         pt = list(pt)
         while True:
             candidate_pairs = [pair for pair in zip(pt, pt[1:]) if pair in self.merge_order]
-            if not candidate_pairs: 
+            if not candidate_pairs:
                 break
 
             min_pair = min(candidate_pairs, key=self.merge_order.get)
@@ -71,7 +68,7 @@ class Tokenizer:
             i = 0
 
             while i < len(pt):
-                if pt[i] == min_pair[0] and i < len(pt)-1 and pt[i+1] == min_pair[1]:
+                if pt[i] == min_pair[0] and i < len(pt) - 1 and pt[i + 1] == min_pair[1]:
                     new_pt.append(min_pair[0] + min_pair[1])
                     i += 2
                 else:
@@ -88,10 +85,10 @@ class Tokenizer:
             text_chunks = [text]
         for chunk in text_chunks:
             if chunk in self.special_tokens:
-                token_ids.append(self.reverse_vocab[chunk.encode('utf-8')])
+                token_ids.append(self.reverse_vocab[chunk.encode("utf-8")])
                 continue
             tokens = re.finditer(PAT, chunk)
-            pre_tokens = [tuple(bytes([byte]) for byte in token.group().encode('utf-8')) for token in tokens]
+            pre_tokens = [tuple(bytes([byte]) for byte in token.group().encode("utf-8")) for token in tokens]
             for pt in pre_tokens:
                 merged = self._apply_merges(pt)
                 token_ids.extend(self.reverse_vocab[b] for b in merged)
@@ -108,6 +105,7 @@ class Tokenizer:
             byte_array.append(self.vocab[id])
 
         return b"".join(byte_array).decode("utf-8", errors="replace")
+
 
 def find_chunk_boundaries(
     file: BinaryIO,
@@ -155,6 +153,7 @@ def find_chunk_boundaries(
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
 
+
 def merge_vocab(pair, vocab, pairs, pair_to_words, heap):
     bigram = pair[0] + pair[1]
     curr_words = list(pair_to_words[pair])
@@ -165,8 +164,8 @@ def merge_vocab(pair, vocab, pairs, pair_to_words, heap):
         i = 0
         freq = vocab[word]
         while i < len(word):
-            if word[i] == pair[0] and i < len(word)-1 and word[i+1] == pair[1]:
-                new_word.append(bigram)                
+            if word[i] == pair[0] and i < len(word) - 1 and word[i + 1] == pair[1]:
+                new_word.append(bigram)
                 i += 2
             else:
                 new_word.append(word[i])
@@ -176,22 +175,23 @@ def merge_vocab(pair, vocab, pairs, pair_to_words, heap):
         new_word_tuple = tuple(new_word)
         vocab[new_word_tuple] = freq
 
-        for i in range(len(word)-1):
-            old_pair = (word[i], word[i+1])
+        for i in range(len(word) - 1):
+            old_pair = (word[i], word[i + 1])
             pairs[old_pair] -= freq
             pair_to_words[old_pair].discard(word)
             changed_pairs.add(old_pair)
-        
-        for i in range(len(new_word)-1):
-            new_pair = (new_word[i], new_word[i+1])
+
+        for i in range(len(new_word) - 1):
+            new_pair = (new_word[i], new_word[i + 1])
             pairs[new_pair] += freq
             pair_to_words[new_pair].add(new_word_tuple)
             changed_pairs.add(new_pair)
-    
+
     for p in changed_pairs:
         heapq.heappush(heap, (-pairs[p], Reversed(p)))
 
     return vocab
+
 
 def process_chunk(args):
     start, end, input_path, special_tokens = args
@@ -201,17 +201,18 @@ def process_chunk(args):
         f.seek(start)
         chunk = f.read(end - start).decode("utf-8", errors="ignore")
     docs = re.split(special_token_regex, chunk)
-    
+
     token_counts = Counter()
     for doc in docs:
         tokens = re.finditer(PAT, doc)
         token_counts.update(token.group() for token in tokens)
 
     for token, count in token_counts.items():
-        byte_token = tuple(BYTES[byte] for byte in token.encode('utf-8'))       
+        byte_token = tuple(BYTES[byte] for byte in token.encode("utf-8"))
         local_vocab[byte_token] += count
 
     return local_vocab
+
 
 def train_bpe(
     input_path: str | os.PathLike,
@@ -231,11 +232,7 @@ def train_bpe(
         results = [process_chunk(args) for args in args_list]
     else:
         with Pool(num_processes) as pool:
-            results = list(tqdm(
-                pool.imap(process_chunk, args_list),
-                total=len(args_list),
-                desc="pretokenize"
-            ))
+            results = list(tqdm(pool.imap(process_chunk, args_list), total=len(args_list), desc="pretokenize"))
 
     vocab = defaultdict(int)
     for local_vocab in results:
@@ -249,9 +246,9 @@ def train_bpe(
 
     pairs = defaultdict(int)
     for word, freq in vocab.items():
-        for i in range(len(word)-1):
-            pairs[word[i], word[i+1]] += freq
-            pair_to_words[(word[i], word[i+1])].add(word)
+        for i in range(len(word) - 1):
+            pairs[word[i], word[i + 1]] += freq
+            pair_to_words[(word[i], word[i + 1])].add(word)
 
     heap = [(-count, Reversed(pair)) for pair, count in pairs.items()]
     heapq.heapify(heap)
@@ -286,6 +283,7 @@ def train_bpe(
 
     return final_vocab, merges
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_processes", type=int, default=8)
@@ -295,13 +293,15 @@ if __name__ == "__main__":
     # input_path = "data/bpe_example.txt"
     # input_path = "data/TinyStoriesV2-GPT4-valid.txt"
     # input_path = "data/TinyStoriesV2-GPT4-train.txt"
-    input_path = "data/owt_valid.txt"
-    # input_path = "data/owt_train.txt"
+    # input_path = "data/owt_valid.txt"
+    input_path = "data/owt_train.txt"
     special_tokens = ["<|endoftext|>"]
     vocab_size = 32000
 
     start = time.time()
-    final_vocab, merges = train_bpe(input_path=input_path, vocab_size=vocab_size, special_tokens=special_tokens, num_processes=num_processes)
+    final_vocab, merges = train_bpe(
+        input_path=input_path, vocab_size=vocab_size, special_tokens=special_tokens, num_processes=num_processes
+    )
     duration = time.time() - start
     print(f"{duration:.2f}s")
 
@@ -314,8 +314,7 @@ if __name__ == "__main__":
     with open(os.path.join(run_dir, "merges.pkl"), "wb") as f:
         pickle.dump(merges, f)
 
-    longest = max(final_vocab.values(), key=len)    
-
+    longest = max(final_vocab.values(), key=len)
 
     config = {
         "input_path": str(input_path),
@@ -324,7 +323,7 @@ if __name__ == "__main__":
         "num_processes": num_processes,
         "duration_seconds": duration,
         "longest_token": longest.decode("utf-8", errors="replace"),
-        "longest_token_length": len(longest)
+        "longest_token_length": len(longest),
     }
 
     with open(os.path.join(run_dir, "config.json"), "w") as f:

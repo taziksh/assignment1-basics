@@ -13,6 +13,7 @@ from cs336_basics.transformer import *
 from cs336_basics.tokenizer import train_bpe, Tokenizer
 from cs336_basics.trainer import *
 
+
 def run_linear(
     d_in: int,
     d_out: int,
@@ -36,6 +37,7 @@ def run_linear(
     output = linear(in_features)
     return output
 
+
 def run_embedding(
     vocab_size: int,
     d_model: int,
@@ -58,6 +60,7 @@ def run_embedding(
     embed.load_state_dict({"weight": weights})
     output = embed(token_ids)
     return output
+
 
 def run_swiglu(
     d_model: int,
@@ -89,11 +92,7 @@ def run_swiglu(
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
     swiglu = SwiGLU(d_model, d_ff)
-    weights = {
-        "w1.weight": w1_weight,
-        "w2.weight": w2_weight,
-        "w3.weight": w3_weight
-    }
+    weights = {"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight}
     swiglu.load_state_dict(weights)
     output = swiglu(in_features)
 
@@ -157,7 +156,7 @@ def run_multihead_self_attention(
         "q_proj.weight": q_proj_weight,
         "k_proj.weight": k_proj_weight,
         "v_proj.weight": v_proj_weight,
-        "output_proj.weight": o_proj_weight
+        "output_proj.weight": o_proj_weight,
     }
     mha.load_state_dict(state_dict)
     return mha(in_features)
@@ -207,10 +206,10 @@ def run_multihead_self_attention_with_rope(
         "q_proj.weight": q_proj_weight,
         "k_proj.weight": k_proj_weight,
         "v_proj.weight": v_proj_weight,
-        "output_proj.weight": o_proj_weight
+        "output_proj.weight": o_proj_weight,
     }
     mha.load_state_dict(state_dict)
-    return mha(in_features, token_positions)    
+    return mha(in_features, token_positions)
 
 
 def run_rope(

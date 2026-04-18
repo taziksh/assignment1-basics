@@ -7,6 +7,7 @@ import os
 from cs336_basics.trainer import get_batch, cross_entropy, save_checkpoint, AdamWOptim
 from cs336_basics.transformer import TransformerLM
 
+
 def model_parser():
     p = argparse.ArgumentParser(add_help=False)
     g = p.add_argument_group("model")
@@ -19,6 +20,7 @@ def model_parser():
     g.add_argument("--rope-theta", type=float, default=10000)
     return p
 
+
 def optim_parser():
     p = argparse.ArgumentParser(add_help=False)
     g = p.add_argument_group("optim")
@@ -29,14 +31,16 @@ def optim_parser():
     g.add_argument("--eps", type=float, default=10e-6)
     return p
 
+
 def data_parser():
     p = argparse.ArgumentParser(add_help=False)
     g = p.add_argument_group("data")
-    g.add_argument("--train-data", type=str)#, required=True)
-    g.add_argument("--val-data", type=str)#, required=True)
+    g.add_argument("--train-data", type=str)  # , required=True)
+    g.add_argument("--val-data", type=str)  # , required=True)
     g.add_argument("--batch-size", type=int, default=4)
     g.add_argument("--total_steps", type=int, default=1000)
     return p
+
 
 def logging_parser():
     p = argparse.ArgumentParser(add_help=False)
@@ -53,6 +57,7 @@ def main_parser():
     p.add_argument("--checkpoint_interval", type=int, default=100)
     return p
 
+
 if __name__ == "__main__":
     args = main_parser().parse_args()
 
@@ -60,21 +65,11 @@ if __name__ == "__main__":
     train_data = np.load(args.train_data, mmap_mode="r")
 
     model = TransformerLM(
-        args.vocab_size,
-        args.context_length,
-        args.d_model,
-        args.num_layers,
-        args.num_heads,
-        args.d_ff,
-        args.rope_theta
+        args.vocab_size, args.context_length, args.d_model, args.num_layers, args.num_heads, args.d_ff, args.rope_theta
     ).to(args.device)
 
     optim = AdamWOptim(
-        model.parameters(),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-        eps=args.eps,
-        betas=[args.beta_1, args.beta_2]
+        model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=args.eps, betas=[args.beta_1, args.beta_2]
     )
 
     run_dir = f"runs/train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -94,7 +89,6 @@ if __name__ == "__main__":
         optim.zero_grad()
         loss.backward()
         optim.step()
-
 
         if i > 0 and i % args.checkpoint_interval == 0:
             save_checkpoint(model, optim, i, f"{run_dir}/ckpt_step_{i}.pt")
