@@ -9,6 +9,7 @@ from typing import Iterable, Iterator
 from functools import lru_cache
 from collections import defaultdict
 import heapq
+from tqdm import tqdm
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 BYTES = [bytes([i]) for i in range(256)]
@@ -221,7 +222,11 @@ def train_bpe(
         results = [process_chunk(args) for args in args_list]
     else:
         with Pool(num_processes) as pool:
-            results = pool.map(process_chunk, args_list)
+            results = list(tqdm(
+                pool.imap(process_chunk, args_list),
+                total=len(args_list),
+                desc="pretokenize"
+            ))
 
     vocab = defaultdict(int)
     for local_vocab in results:
@@ -242,7 +247,7 @@ def train_bpe(
     heap = [(-count, Reversed(pair)) for pair, count in pairs.items()]
     heapq.heapify(heap)
 
-    for _ in range(num_merges):
+    for _ in tqdm(range(num_merges), desc="merges"):
         if not pairs:
             break
         while heap:
@@ -279,9 +284,9 @@ if __name__ == "__main__":
     num_processes = args.num_processes
 
     # input_path = "data/bpe_example.txt"
-    input_path = "data/TinyStoriesV2-GPT4-valid.txt"
+    # input_path = "data/TinyStoriesV2-GPT4-valid.txt"
     # input_path = "data/TinyStoriesV2-GPT4-train.txt"
-    # input_path = "data/owt_valid.txt"
+    input_path = "data/owt_valid.txt"
     # input_path = "data/owt_train.txt"
     special_tokens = ["<|endoftext|>"]
     vocab_size = 32000
