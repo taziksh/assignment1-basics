@@ -173,7 +173,8 @@ def merge_vocab(pair, vocab, pairs, pair_to_words, heap):
                 i += 1
 
         del vocab[word]
-        vocab[tuple(new_word)] = freq
+        new_word_tuple = tuple(new_word)
+        vocab[new_word_tuple] = freq
 
         for i in range(len(word)-1):
             old_pair = (word[i], word[i+1])
@@ -184,7 +185,7 @@ def merge_vocab(pair, vocab, pairs, pair_to_words, heap):
         for i in range(len(new_word)-1):
             new_pair = (new_word[i], new_word[i+1])
             pairs[new_pair] += freq
-            pair_to_words[new_pair].add(tuple(new_word))
+            pair_to_words[new_pair].add(new_word_tuple)
             changed_pairs.add(new_pair)
     
     for p in changed_pairs:
