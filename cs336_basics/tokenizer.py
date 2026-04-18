@@ -7,7 +7,7 @@ from datetime import datetime
 import json
 from typing import Iterable, Iterator
 from functools import lru_cache
-from collections import defaultdict
+from collections import defaultdict, Counter
 import heapq
 from tqdm import tqdm
 
@@ -200,12 +200,16 @@ def process_chunk(args):
         f.seek(start)
         chunk = f.read(end - start).decode("utf-8", errors="ignore")
     docs = re.split(special_token_regex, chunk)
+    
+    token_counts = Counter()
     for doc in docs:
         tokens = re.finditer(PAT, doc)
-        byte_tokens = [tuple(BYTES[byte] for byte in token.group().encode('utf-8')) for token in tokens]        
+        token_counts.update(token.group() for token in tokens)
 
-        for key in byte_tokens:
-            local_vocab[key] += 1
+    for token, count in token_counts.items():
+        byte_token = tuple(BYTES[byte] for byte in token.encode('utf-8'))       
+        local_vocab[byte_token] += count
+
     return local_vocab
 
 def train_bpe(
