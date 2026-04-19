@@ -20,8 +20,10 @@ def cross_entropy(
 
 
 # TODO: move to new file, optim.py
+# Hyperparameter defaults are from AdamW paper,
+# except for weight_decay, which is from GPT-3/LLaMA
 class AdamWOptim(torch.optim.Optimizer):
-    def __init__(self, params, betas, eps, weight_decay, lr):
+    def __init__(self, params, betas=(0.9, 0.999), eps=10e-6, weight_decay=0.1, lr=0.001):
         defaults = {
             "lr": lr,
             "weight_decay": weight_decay,

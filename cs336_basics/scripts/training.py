@@ -7,30 +7,7 @@ from datetime import datetime
 import os
 from cs336_basics.trainer import get_batch, cross_entropy, save_checkpoint, AdamWOptim
 from cs336_basics.transformer import TransformerLM
-
-
-def model_parser():
-    p = argparse.ArgumentParser(add_help=False)
-    g = p.add_argument_group("model")
-    g.add_argument("--vocab-size", type=int, default=10000)
-    g.add_argument("--context-length", type=int, default=256)
-    g.add_argument("--d-model", type=int, default=512)
-    g.add_argument("--num-layers", type=int, default=4)
-    g.add_argument("--num-heads", type=int, default=16)
-    g.add_argument("--d-ff", type=int, default=1344)
-    g.add_argument("--rope-theta", type=float, default=10000)
-    return p
-
-
-def optim_parser():
-    p = argparse.ArgumentParser(add_help=False)
-    g = p.add_argument_group("optim")
-    g.add_argument("--lr", type=float, default=0.001)
-    g.add_argument("--weight-decay", type=float, default=0)
-    g.add_argument("--beta-1", type=float, default=0.9)
-    g.add_argument("--beta-2", type=float, default=0.999)
-    g.add_argument("--eps", type=float, default=10e-6)
-    return p
+from cs336_basics.scripts.cli import model_parser, optim_parser
 
 
 def data_parser():
@@ -39,7 +16,7 @@ def data_parser():
     g.add_argument("--train-data", type=str, required=True)
     g.add_argument("--val-data", type=str, required=True)
     g.add_argument("--batch-size", type=int, default=4)
-    g.add_argument("--total_steps", type=int, default=100)
+    g.add_argument("--total-steps", type=int, default=10000)
     return p
 
 
@@ -48,7 +25,7 @@ def logging_parser():
     g = p.add_argument_group("logging")
     g.add_argument("--wandb", action="store_true")
     g.add_argument("--wandb-project", type=str, default="cs336-1")
-    g.add_argument("--log-interval", type=int, default=10)
+    g.add_argument("--log-interval", type=int, default=100)
     return p
 
 
