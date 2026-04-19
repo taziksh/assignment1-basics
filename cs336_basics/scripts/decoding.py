@@ -18,6 +18,7 @@ def tokenizer_parser():
         "--merges-filepath", type=str, default="runs/TinyStoriesV2-GPT4-train_vocab10000_20260413_180136/merges.pkl"
     )
     g.add_argument("--special-tokens", type=str, nargs="*", default=["<|endoftext|>"])
+    g.add_argument("--max-tokens", type=int, default=2048)
     return p
 
 
@@ -40,6 +41,7 @@ if __name__ == "__main__":
     vocab = args.vocab_filepath
     merges = args.merges_filepath
     special_tokens = args.special_tokens
+    max_tokens = args.max_tokens
 
     ctx_len = args.context_length
 
@@ -59,12 +61,14 @@ if __name__ == "__main__":
 
     tokens = torch.tensor(tokenizer.encode(prompt), device=device, dtype=torch.long)
     tokens = tokens.unsqueeze(0)
+    count = 0
 
-    while True:
+    while count < max_tokens:
         logits = model(tokens)
         next_token_logits = logits[:, -1, :]
         sm = softmax(next_token_logits, dim=-1)
         next_token = torch.multinomial(sm, 1)
+        count += 1
         if next_token == eot_token_id:
             break
         tokens = torch.concat([tokens, next_token], dim=-1)
