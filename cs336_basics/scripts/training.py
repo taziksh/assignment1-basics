@@ -80,6 +80,9 @@ if __name__ == "__main__":
     if args.wandb:
         wandb.init(project=args.wandb_project, config=vars(args))
 
+    # n=1 batch to test overfitting
+    # x, y = get_batch(train_data, args.batch_size, args.context_length, device=args.device)
+    # y = rearrange(y, "b s -> (b s)")
     for i, step in enumerate(range(args.total_steps)):
         x, y = get_batch(train_data, args.batch_size, args.context_length, device=args.device)
         y = rearrange(y, "b s -> (b s)")
