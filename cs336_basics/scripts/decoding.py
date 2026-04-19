@@ -28,6 +28,7 @@ def main_parser():
     # TODO: make these non hardcoded
     p.add_argument("--checkpoint", type=str, default="runs/train_20260418_221619/ckpt_step_9900.pt")
     p.add_argument("--device", type=str, choices=["mps", "cuda", "cpu"], default="mps")
+    p.add_argument("--temperature", type=float, default=1.0)
     return p
 
 
@@ -37,6 +38,9 @@ if __name__ == "__main__":
     prompt = args.prompt
     ckpt = args.checkpoint
     device = args.device
+
+    assert args.temperature > 0
+    temperature = args.temperature
 
     vocab = args.vocab_filepath
     merges = args.merges_filepath
@@ -66,6 +70,7 @@ if __name__ == "__main__":
     while count < max_tokens:
         logits = model(tokens)
         next_token_logits = logits[:, -1, :]
+        next_token_logits = next_token_logits/temperature
         sm = softmax(next_token_logits, dim=-1)
         next_token = torch.multinomial(sm, 1)
         count += 1
