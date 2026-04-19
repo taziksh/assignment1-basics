@@ -29,6 +29,7 @@ def main_parser():
     p.add_argument("--checkpoint", type=str, default="runs/train_20260418_221619/ckpt_step_9900.pt")
     p.add_argument("--device", type=str, choices=["mps", "cuda", "cpu"], default="mps")
     p.add_argument("--temperature", type=float, default=1.0)
+    p.add_argument("--top-p", type=float)
     return p
 
 
@@ -41,6 +42,7 @@ if __name__ == "__main__":
 
     assert args.temperature > 0
     temperature = args.temperature
+    p = args.top_p
 
     vocab = args.vocab_filepath
     merges = args.merges_filepath
@@ -71,8 +73,16 @@ if __name__ == "__main__":
         logits = model(tokens)
         next_token_logits = logits[:, -1, :]
         next_token_logits = next_token_logits/temperature
-        sm = softmax(next_token_logits, dim=-1)
-        next_token = torch.multinomial(sm, 1)
+        probs = softmax(next_token_logits, dim=-1)
+        if p:
+            sorted_vals, sorted_indices = torch.sort(probs, dim=-1, descending=True)
+            cumsum = torch.cumsum(sorted_vals, dim=-1)
+            mask = (cumsum - sorted_vals) < p
+            sorted_vals *= mask
+            sample = torch.multinomial(sorted_vals, 1)
+            next_token = sorted_indices.gather(dim=-1, index=sample)
+        else:
+            next_token = torch.multinomial(probs, 1)
         count += 1
         if next_token == eot_token_id:
             break
