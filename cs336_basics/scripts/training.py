@@ -37,9 +37,17 @@ def main_parser():
     p.add_argument("--val-interval", type=int, default=10)
     return p
 
+def train(args):
+    if args.wandb:
+        wandb.init(project=args.wandb_project, config=vars(args))
+        for k, v in dict(wandb.config).items():
+            setattr(args, k, v)
+    prefix = f"{wandb.run.name}_" if args.wandb else ""
 
-if __name__ == "__main__":
-    args = main_parser().parse_args()
+    run_dir = f"runs/{prefix}train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    os.makedirs(run_dir, exist_ok=True)
+    with open(f"{run_dir}/config.json", "w") as f:
+        json.dump(vars(args), f, indent=2)
 
     train_data = np.load(args.train_data, mmap_mode="r")
     val_data = np.load(args.val_data, mmap_mode="r")
@@ -52,16 +60,6 @@ if __name__ == "__main__":
     optim = AdamWOptim(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=args.eps, betas=[args.beta_1, args.beta_2]
     )
-
-    if args.wandb:
-        wandb.init(project=args.wandb_project, config=vars(args))
-    prefix = f"{wandb.run.name}_" if args.wandb else ""
-
-    run_dir = f"runs/{prefix}train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    os.makedirs(run_dir, exist_ok=True)
-    with open(f"{run_dir}/config.json", "w") as f:
-        json.dump(vars(args), f, indent=2)
-
 
     # n=1 batch to test overfitting
     # x, y = get_batch(train_data, args.batch_size, args.context_length, device=args.device)
@@ -111,5 +109,9 @@ if __name__ == "__main__":
         if args.wandb and i % args.log_interval == 0:
             wandb.log(
                 {"train/loss": loss.item(),
-                 "lr": lr,
-                 }, step=i)
+                "lr": lr,
+                }, step=i)
+
+if __name__ == "__main__":
+    args = main_parser().parse_args()
+    train(args)
