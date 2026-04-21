@@ -5,6 +5,7 @@ from einops import rearrange
 import wandb
 from datetime import datetime
 import os
+import json
 from cs336_basics.trainer import get_batch, get_lr_cosine_schedule, cross_entropy, save_checkpoint, gradient_clipping, AdamWOptim
 from cs336_basics.transformer import TransformerLM
 from cs336_basics.scripts.cli import model_parser, optim_parser
@@ -54,6 +55,8 @@ if __name__ == "__main__":
 
     run_dir = f"runs/train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     os.makedirs(run_dir, exist_ok=True)
+    with open(f"{run_dir}/config.json", "w") as f:
+        json.dump(vars(args), f, indent=2)
 
     if args.wandb:
         wandb.init(project=args.wandb_project, config=vars(args))
