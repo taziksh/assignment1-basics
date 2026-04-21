@@ -53,13 +53,15 @@ if __name__ == "__main__":
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=args.eps, betas=[args.beta_1, args.beta_2]
     )
 
-    run_dir = f"runs/train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    if args.wandb:
+        wandb.init(project=args.wandb_project, config=vars(args))
+    prefix = f"{wandb.run.name}_" if args.wandb else ""
+
+    run_dir = f"runs/{prefix}train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     os.makedirs(run_dir, exist_ok=True)
     with open(f"{run_dir}/config.json", "w") as f:
         json.dump(vars(args), f, indent=2)
 
-    if args.wandb:
-        wandb.init(project=args.wandb_project, config=vars(args))
 
     # n=1 batch to test overfitting
     # x, y = get_batch(train_data, args.batch_size, args.context_length, device=args.device)
