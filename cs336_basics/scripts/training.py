@@ -33,7 +33,7 @@ def logging_parser():
 def main_parser():
     p = argparse.ArgumentParser(parents=[model_parser(), optim_parser(), data_parser(), logging_parser()])
     p.add_argument("--device", type=str, choices=["mps", "cuda", "cpu"], default="mps")
-    p.add_argument("--checkpoint-interval", type=int, default=100)
+    p.add_argument("--checkpoint-interval", type=int, default=10000)
     p.add_argument("--val-interval", type=int, default=10)
     return p
 
