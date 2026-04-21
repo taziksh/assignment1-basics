@@ -5,7 +5,7 @@ from einops import rearrange
 import wandb
 from datetime import datetime
 import os
-from cs336_basics.trainer import get_batch, cross_entropy, save_checkpoint, AdamWOptim
+from cs336_basics.trainer import get_batch, get_lr_cosine_schedule, cross_entropy, save_checkpoint, AdamWOptim
 from cs336_basics.transformer import TransformerLM
 from cs336_basics.scripts.cli import model_parser, optim_parser
 
@@ -60,7 +60,13 @@ if __name__ == "__main__":
     # n=1 batch to test overfitting
     # x, y = get_batch(train_data, args.batch_size, args.context_length, device=args.device)
     # y = rearrange(y, "b s -> (b s)")
-    for i, step in enumerate(range(args.total_steps)):
+
+
+    min_lr = 0.1 * args.lr
+    max_lr = args.lr
+    total_steps = args.total_steps
+    warmup_steps = int(0.05 * args.total_steps)
+    for i in range(args.total_steps):
         x, y = get_batch(train_data, args.batch_size, args.context_length, device=args.device)
         y = rearrange(y, "b s -> (b s)")
         logits = model(x)
@@ -70,6 +76,10 @@ if __name__ == "__main__":
 
         optim.zero_grad()
         loss.backward()
+
+        lr = get_lr_cosine_schedule(it=i, max_learning_rate=max_lr, min_learning_rate=min_lr, warmup_iters=warmup_steps, cosine_cycle_iters=total_steps)
+        for group in optim.param_groups:
+            group["lr"] = lr
         optim.step()
 
         if i % args.val_interval == 0:
@@ -91,4 +101,7 @@ if __name__ == "__main__":
             save_checkpoint(model, optim, i, f"{run_dir}/ckpt_step_{i}.pt")
 
         if args.wandb and i % args.log_interval == 0:
-            wandb.log({"train/loss": loss.item()}, step=i)
+            wandb.log(
+                {"train/loss": loss.item(),
+                 "lr": lr,
+                 }, step=i)
