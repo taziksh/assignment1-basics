@@ -1,0 +1,25 @@
+project: cs336-1                                                                  
+entity: tshahjah 
+program: cs336_basics/scripts/training.py
+method: grid
+metric:
+  name: val/loss
+  goal: minimize
+parameters:
+  lr: 
+    values: [1e-4, 1e-3, 1e-2]
+  train-data:
+    value: "runs/encoded_TinyStoriesV2-GPT4-train_TinyStoriesV2-GPT4-train_vocab10000_20260413_180136_20260417_011921/tokens.npy"
+  val-data:
+    value: "runs/encoded_TinyStoriesV2-GPT4-valid_TinyStoriesV2-GPT4-train_vocab10000_20260413_180136_20260417_011823/tokens.npy"
+  total-steps:
+    value: 40000
+  checkpoint-interval:
+    value: 10000
+command:
+- ${env}
+- uv 
+- run
+- ${program} 
+- "--wandb"
+- ${args}
