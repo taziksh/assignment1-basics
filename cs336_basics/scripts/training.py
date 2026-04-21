@@ -46,6 +46,7 @@ if __name__ == "__main__":
     model = TransformerLM(
         args.vocab_size, args.context_length, args.d_model, args.num_layers, args.num_heads, args.d_ff, args.rope_theta
     ).to(args.device)
+    model = torch.compile(model, backend="aot_eager")
 
     optim = AdamWOptim(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=args.eps, betas=[args.beta_1, args.beta_2]
