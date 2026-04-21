@@ -5,7 +5,7 @@ from einops import rearrange
 import wandb
 from datetime import datetime
 import os
-from cs336_basics.trainer import get_batch, get_lr_cosine_schedule, cross_entropy, save_checkpoint, AdamWOptim
+from cs336_basics.trainer import get_batch, get_lr_cosine_schedule, cross_entropy, save_checkpoint, gradient_clipping, AdamWOptim
 from cs336_basics.transformer import TransformerLM
 from cs336_basics.scripts.cli import model_parser, optim_parser
 
@@ -77,6 +77,8 @@ if __name__ == "__main__":
 
         optim.zero_grad()
         loss.backward()
+        # Gradient clip at 1.0 following example of GPT-3, LlaMA, PaLM
+        gradient_clipping(model.parameters(), 1.0)
 
         lr = get_lr_cosine_schedule(it=i, max_learning_rate=max_lr, min_learning_rate=min_lr, warmup_iters=warmup_steps, cosine_cycle_iters=total_steps)
         for group in optim.param_groups:
