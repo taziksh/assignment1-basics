@@ -1,62 +1,36 @@
-import argparse
 import torch
+import tyro
 
-from cs336_basics.scripts.training import model_parser, optim_parser
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.trainer import load_checkpoint, AdamWOptim
 from cs336_basics.transformer import TransformerLM, softmax
-
-
-def tokenizer_parser():
-    p = argparse.ArgumentParser(add_help=False)
-    g = p.add_argument_group("tokenizer")
-    # TODO: make these non hardcoded
-    g.add_argument(
-        "--vocab-filepath", type=str, default="runs/TinyStoriesV2-GPT4-train_vocab10000_20260413_180136/vocab.pkl"
-    )
-    g.add_argument(
-        "--merges-filepath", type=str, default="runs/TinyStoriesV2-GPT4-train_vocab10000_20260413_180136/merges.pkl"
-    )
-    g.add_argument("--special-tokens", type=str, nargs="*", default=["<|endoftext|>"])
-    g.add_argument("--max-tokens", type=int, default=2048)
-    return p
-
-
-def main_parser():
-    p = argparse.ArgumentParser(parents=[model_parser(), optim_parser(), tokenizer_parser()])
-    p.add_argument("--prompt", type=str, required=True)
-    # TODO: make these non hardcoded
-    p.add_argument("--checkpoint", type=str, default="runs/train_20260418_221619/ckpt_step_9900.pt")
-    p.add_argument("--device", type=str, choices=["mps", "cuda", "cpu"], default="mps")
-    p.add_argument("--temperature", type=float, default=1.0)
-    p.add_argument("--top-p", type=float)
-    return p
+from cs336_basics.config import DecodingConfig
 
 
 if __name__ == "__main__":
-    args = main_parser().parse_args()
+    cfg = tyro.cli(DecodingConfig)
 
-    prompt = args.prompt
-    ckpt = args.checkpoint
-    device = args.device
+    prompt = cfg.prompt
+    ckpt = cfg.checkpoint
+    device = cfg.device
 
-    assert args.temperature > 0
-    temperature = args.temperature
-    p = args.top_p
+    assert cfg.temperature > 0
+    temperature = cfg.temperature
+    p = cfg.top_p
 
-    vocab = args.vocab_filepath
-    merges = args.merges_filepath
-    special_tokens = args.special_tokens
-    max_tokens = args.max_tokens
+    vocab = cfg.vocab_filepath
+    merges = cfg.merges_filepath
+    special_tokens = cfg.special_tokens
+    max_tokens = cfg.max_tokens
 
-    ctx_len = args.context_length
+    ctx_len = cfg.model.context_length
 
     model = TransformerLM(
-        args.vocab_size, args.context_length, args.d_model, args.num_layers, args.num_heads, args.d_ff, args.rope_theta
-    ).to(args.device)
+        cfg.model.vocab_size, cfg.model.context_length, cfg.model.d_model, cfg.model.num_layers, cfg.model.num_heads, cfg.model.d_ff, cfg.model.rope_theta
+    ).to(cfg.device)
 
     optim = AdamWOptim(
-        model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=args.eps, betas=[args.beta_1, args.beta_2]
+        model.parameters(), lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay, eps=cfg.optim.eps, betas=[cfg.optim.beta_1, cfg.optim.beta_2]
     )
 
     load_checkpoint(ckpt, model, optim)
@@ -72,7 +46,7 @@ if __name__ == "__main__":
     while count < max_tokens:
         logits = model(tokens)
         next_token_logits = logits[:, -1, :]
-        next_token_logits = next_token_logits/temperature
+        next_token_logits = next_token_logits / temperature
         probs = softmax(next_token_logits, dim=-1)
         if p:
             sorted_vals, sorted_indices = torch.sort(probs, dim=-1, descending=True)

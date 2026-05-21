@@ -1,6 +1,7 @@
 from jaxtyping import Float, Int
 from collections.abc import Callable
-from typing import Optional, Iterable, IO, BinaryIO, Any
+from typing import IO, BinaryIO
+from collections.abc import Iterable
 import torch
 import math
 import numpy.typing as npt
@@ -33,7 +34,7 @@ class AdamWOptim(torch.optim.Optimizer):
         }
         super().__init__(params, defaults)
 
-    def step(self, closure: Optional[Callable] = None):
+    def step(self, closure: Callable | None = None):
         loss = None if closure is None else closure()
         for group in self.param_groups:
             lr = group["lr"]
