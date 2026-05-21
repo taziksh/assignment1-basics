@@ -108,7 +108,7 @@ def train(args):
 
             model.train()
 
-        if i > 0 and i % args.checkpoint_interval == 0:
+        if i > 0 and (i % args.checkpoint_interval == 0 or i == total_steps-1):
             save_checkpoint(model, optim, i, f"{run_dir}/ckpt_step_{i}.pt")
 
         if args.wandb and i % args.log_interval == 0:
