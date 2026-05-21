@@ -17,7 +17,10 @@ def data_parser():
     g.add_argument("--train-data", type=str, required=True)
     g.add_argument("--val-data", type=str, required=True)
     g.add_argument("--batch-size", type=int, default=4)
-    g.add_argument("--total-steps", type=int, default=10000)
+
+    total_group = g.add_mutually_exclusive_group(required=True)
+    total_group.add_argument("--total-steps", type=int)
+    total_group.add_argument("--total-tokens", type=int)
     return p
 
 
@@ -116,4 +119,6 @@ def train(args):
 
 if __name__ == "__main__":
     args = main_parser().parse_args()
+    if args.total_tokens is not None:
+        args.total_steps = args.total_tokens // (args.batch_size * args.context_length)
     train(args)
