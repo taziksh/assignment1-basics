@@ -65,13 +65,15 @@ def train(args):
     # x, y = get_batch(train_data, args.batch_size, args.context_length, device=args.device)
     # y = rearrange(y, "b s -> (b s)")
 
+    batch_size = args.batch_size
+    context_length = args.context_length
 
     min_lr = 0.1 * args.lr
     max_lr = args.lr
     total_steps = args.total_steps
-    warmup_steps = int(0.05 * args.total_steps)
-    for i in range(args.total_steps):
-        x, y = get_batch(train_data, args.batch_size, args.context_length, device=args.device)
+    warmup_steps = int(0.05 * total_steps)
+    for i in range(total_steps):
+        x, y = get_batch(train_data, batch_size, args.context_length, device=args.device)
         y = rearrange(y, "b s -> (b s)")
         logits = model(x)
         logits = rearrange(logits, "b s v -> (b s) v")
@@ -91,7 +93,7 @@ def train(args):
         if i % args.val_interval == 0:
             model.eval()
             with torch.no_grad():
-                val_x, val_y = get_batch(val_data, args.batch_size, args.context_length, device=args.device)
+                val_x, val_y = get_batch(val_data, batch_size, context_length, device=args.device)
                 val_logits = model(val_x)
                 val_logits = rearrange(val_logits, "b s v -> (b s) v")
                 val_y = rearrange(val_y, "b s -> (b s)")
