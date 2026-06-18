@@ -1,11 +1,10 @@
 import torch
 import tyro
 
-from cs336_basics.tokenizer import Tokenizer
-from cs336_basics.trainer import load_checkpoint, AdamWOptim
-from cs336_basics.transformer import TransformerLM, softmax
 from cs336_basics.config import DecodingConfig
-
+from cs336_basics.tokenizer import Tokenizer
+from cs336_basics.trainer import AdamWOptim, load_checkpoint
+from cs336_basics.transformer import TransformerLM, softmax
 
 if __name__ == "__main__":
     cfg = tyro.cli(DecodingConfig)
@@ -26,11 +25,22 @@ if __name__ == "__main__":
     ctx_len = cfg.model.context_length
 
     model = TransformerLM(
-        cfg.model.vocab_size, cfg.model.context_length, cfg.model.d_model, cfg.model.num_layers, cfg.model.num_heads, cfg.model.d_ff, cfg.model.rope_theta
+        cfg.model.vocab_size,
+        cfg.model.context_length,
+        cfg.model.d_model,
+        cfg.model.num_layers,
+        cfg.model.num_heads,
+        cfg.model.d_ff,
+        cfg.model.rope_theta,
     ).to(cfg.device)
+    model = torch.compile(model, backend="aot_eager")
 
     optim = AdamWOptim(
-        model.parameters(), lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay, eps=cfg.optim.eps, betas=[cfg.optim.beta_1, cfg.optim.beta_2]
+        model.parameters(),
+        lr=cfg.optim.lr,
+        weight_decay=cfg.optim.weight_decay,
+        eps=cfg.optim.eps,
+        betas=[cfg.optim.beta_1, cfg.optim.beta_2],
     )
 
     load_checkpoint(ckpt, model, optim)
