@@ -1,5 +1,13 @@
 # CS336 Spring 2025 Assignment 1: Basics
 
+## Demo
+
+A Transformer LM trained from scratch on TinyStories, generating text:
+
+![inference demo](demo.gif)
+
+## Instructions
+
 For a full description of the assignment, see the assignment handout at
 [cs336_assignment1_basics.pdf](./cs336_assignment1_basics.pdf)
 
