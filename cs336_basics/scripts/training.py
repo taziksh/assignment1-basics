@@ -58,10 +58,10 @@ def train(cfg):
     for i in range(total_steps):
         x, y = get_batch(train_data, batch_size, context_length, device=cfg.device)
         y = rearrange(y, "b s -> (b s)")
-        logits = model(x)
-        logits = rearrange(logits, "b s v -> (b s) v")
-
-        loss = cross_entropy(logits, y)
+        with torch.autocast(device_type=cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"):
+            logits = model(x)
+            logits = rearrange(logits, "b s v -> (b s) v")
+            loss = cross_entropy(logits.float(), y)
 
         optim.zero_grad()
         loss.backward()
@@ -81,13 +81,16 @@ def train(cfg):
 
         if i % cfg.val_interval == 0:
             model.eval()
-            with torch.no_grad():
+            with (
+                torch.no_grad(),
+                torch.autocast(device_type=cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"),
+            ):
                 val_x, val_y = get_batch(val_data, batch_size, context_length, device=cfg.device)
                 val_logits = model(val_x)
                 val_logits = rearrange(val_logits, "b s v -> (b s) v")
                 val_y = rearrange(val_y, "b s -> (b s)")
 
-                val_loss = cross_entropy(val_logits, val_y)
+                val_loss = cross_entropy(val_logits.float(), val_y)
 
                 if cfg.wandb:
                     wandb.log({"val/loss": val_loss.item()}, step=i)
