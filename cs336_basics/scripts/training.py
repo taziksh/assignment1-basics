@@ -21,6 +21,8 @@ from cs336_basics.config import TrainingConfig
 
 def train(cfg):
     torch.manual_seed(cfg.seed)
+    if cfg.device == "cuda":
+        torch.set_float32_matmul_precision("high")
     if cfg.wandb:
         wandb.init(project=cfg.wandb_project, config=asdict(cfg))
     prefix = f"{wandb.run.name}_" if cfg.wandb else ""
