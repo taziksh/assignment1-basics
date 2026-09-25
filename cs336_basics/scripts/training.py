@@ -70,6 +70,8 @@ def train(cfg):
     total_steps = cfg.total_steps
     warmup_steps = int(0.05 * total_steps)
     start_time = time.perf_counter()
+    last_log_minutes = 0.0
+    window_minutes = 0.0
     for i in range(total_steps):
         x, y = get_batch(train_data, batch_size, context_length, device=cfg.device)
         y = rearrange(y, "b s -> (b s)")
@@ -96,6 +98,7 @@ def train(cfg):
         optim.step()
 
         elapsed_minutes = (time.perf_counter() - start_time) / 60
+        is_over_budget = cfg.max_minutes is not None and elapsed_minutes + window_minutes >= cfg.max_minutes
 
         if i % cfg.val_interval == 0:
             model.eval()
@@ -118,10 +121,13 @@ def train(cfg):
 
             model.train()
 
-        if i > 0 and (i % cfg.checkpoint_interval == 0 or i == total_steps - 1):
+        if i > 0 and (i % cfg.checkpoint_interval == 0 or i == total_steps - 1 or is_over_budget):
             save_checkpoint(model, optim, i, f"{run_dir}/ckpt_step_{i}.pt")
 
         if i > 0 and i % cfg.log_interval == 0:
+            window_minutes = elapsed_minutes - last_log_minutes
+            last_log_minutes = elapsed_minutes
+
             loss_val = loss.item()
             print(f"[train] step {i} loss {loss_val:.4f} {elapsed_minutes:.1f}m")
             if cfg.wandb:
@@ -133,6 +139,8 @@ def train(cfg):
                     },
                     step=i,
                 )
+        if is_over_budget:
+            break
 
 
 if __name__ == "__main__":
