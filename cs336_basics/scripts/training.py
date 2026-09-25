@@ -5,6 +5,7 @@ import wandb
 from datetime import datetime
 import os
 import json
+import time
 from dataclasses import asdict
 import tyro
 from cs336_basics.trainer import (
@@ -25,6 +26,9 @@ def train(cfg):
         torch.set_float32_matmul_precision("high")
     if cfg.wandb:
         wandb.init(project=cfg.wandb_project, config=asdict(cfg))
+        wandb.define_metric("wallclock_min")
+        wandb.define_metric("train/*", step_metric="wallclock_min")
+        wandb.define_metric("val/*", step_metric="wallclock_min")
     prefix = f"{wandb.run.name}_" if cfg.wandb else ""
 
     run_dir = f"runs/{prefix}train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -65,9 +69,11 @@ def train(cfg):
     max_lr = cfg.optim.lr
     total_steps = cfg.total_steps
     warmup_steps = int(0.05 * total_steps)
+    start_time = time.perf_counter()
     for i in range(total_steps):
         x, y = get_batch(train_data, batch_size, context_length, device=cfg.device)
         y = rearrange(y, "b s -> (b s)")
+
         with torch.autocast(device_type=cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"):
             logits = model(x)
             logits = rearrange(logits, "b s v -> (b s) v")
@@ -89,6 +95,8 @@ def train(cfg):
             group["lr"] = lr
         optim.step()
 
+        elapsed_minutes = (time.perf_counter() - start_time) / 60
+
         if i % cfg.val_interval == 0:
             model.eval()
             with (
@@ -103,21 +111,28 @@ def train(cfg):
                 val_loss = cross_entropy(val_logits.float(), val_y)
 
                 if cfg.wandb:
-                    wandb.log({"val/loss": val_loss.item()}, step=i)
+                    wandb.log(
+                        {"val/loss": val_loss.item(), "wallclock_min": elapsed_minutes},
+                        step=i,
+                    )
 
             model.train()
 
         if i > 0 and (i % cfg.checkpoint_interval == 0 or i == total_steps - 1):
             save_checkpoint(model, optim, i, f"{run_dir}/ckpt_step_{i}.pt")
 
-        if cfg.wandb and i % cfg.log_interval == 0:
-            wandb.log(
-                {
-                    "train/loss": loss.item(),
-                    # "lr": lr,
-                },
-                step=i,
-            )
+        if i > 0 and i % cfg.log_interval == 0:
+            loss_val = loss.item()
+            print(f"[train] step {i} loss {loss_val:.4f} {elapsed_minutes:.1f}m")
+            if cfg.wandb:
+                wandb.log(
+                    {
+                        "train/loss": loss_val,
+                        "wallclock_min": elapsed_minutes,
+                        # "lr": lr,
+                    },
+                    step=i,
+                )
 
 
 if __name__ == "__main__":
