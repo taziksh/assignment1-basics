@@ -20,6 +20,7 @@ from cs336_basics.config import TrainingConfig
 
 
 def train(cfg):
+    torch.manual_seed(cfg.seed)
     if cfg.wandb:
         wandb.init(project=cfg.wandb_project, config=asdict(cfg))
     prefix = f"{wandb.run.name}_" if cfg.wandb else ""
