@@ -38,7 +38,7 @@ def train(cfg):
     model = TransformerLM(
         cfg.model.vocab_size, cfg.model.context_length, cfg.model.d_model, cfg.model.num_layers, cfg.model.num_heads, cfg.model.d_ff, cfg.model.rope_theta
     ).to(cfg.device)
-    model = torch.compile(model, backend="aot_eager")
+    model = torch.compile(model) if cfg.device == "cuda" else torch.compile(model, backend="aot_eager")
 
     optim = AdamWOptim(
         model.parameters(), lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay, eps=cfg.optim.eps, betas=[cfg.optim.beta_1, cfg.optim.beta_2]
