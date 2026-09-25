@@ -36,12 +36,22 @@ def train(cfg):
     val_data = np.load(cfg.val_data, mmap_mode="r")
 
     model = TransformerLM(
-        cfg.model.vocab_size, cfg.model.context_length, cfg.model.d_model, cfg.model.num_layers, cfg.model.num_heads, cfg.model.d_ff, cfg.model.rope_theta
+        cfg.model.vocab_size,
+        cfg.model.context_length,
+        cfg.model.d_model,
+        cfg.model.num_layers,
+        cfg.model.num_heads,
+        cfg.model.d_ff,
+        cfg.model.rope_theta,
     ).to(cfg.device)
     model = torch.compile(model) if cfg.device == "cuda" else torch.compile(model, backend="aot_eager")
 
     optim = AdamWOptim(
-        model.parameters(), lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay, eps=cfg.optim.eps, betas=[cfg.optim.beta_1, cfg.optim.beta_2]
+        model.parameters(),
+        lr=cfg.optim.lr,
+        weight_decay=cfg.optim.weight_decay,
+        eps=cfg.optim.eps,
+        betas=[cfg.optim.beta_1, cfg.optim.beta_2],
     )
 
     # n=1 batch to test overfitting
