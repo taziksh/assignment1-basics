@@ -142,6 +142,22 @@ def train(cfg):
         if is_over_budget:
             break
 
+    model.eval()
+    final_val_loss = 0.0
+    with torch.no_grad(), torch.autocast(device_type=cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"):
+        for _ in range(cfg.final_val_batches):
+            val_x, val_y = get_batch(val_data, batch_size, context_length, device=cfg.device)
+            val_logits = model(val_x)
+            val_logits = rearrange(val_logits, "b s v -> (b s) v")
+            val_y = rearrange(val_y, "b s -> (b s)")
+
+            final_val_loss += cross_entropy(val_logits.float(), val_y).item()
+    final_val_loss /= cfg.final_val_batches
+
+    print(f"[eval] final val loss {final_val_loss:.4f} over {cfg.final_val_batches} batches")
+    if cfg.wandb:
+        wandb.run.summary["val/final_loss"] = final_val_loss
+
 
 if __name__ == "__main__":
     cfg = tyro.cli(TrainingConfig)
