@@ -21,6 +21,8 @@ class OptimConfig:
     beta_2: float = 0.999
     eps: float = 1e-5
 
+    momentum: float = 0.95
+
 
 @dataclass(kw_only=True)
 class TrainingConfig:

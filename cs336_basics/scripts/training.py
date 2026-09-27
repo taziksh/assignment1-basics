@@ -15,6 +15,7 @@ from cs336_basics.trainer import (
     save_checkpoint,
     gradient_clipping,
     AdamWOptim,
+    MuonOptim
 )
 from cs336_basics.transformer import TransformerLM
 from cs336_basics.config import TrainingConfig
@@ -48,14 +49,32 @@ def train(cfg):
         cfg.model.d_ff,
         cfg.model.rope_theta,
     ).to(cfg.device)
+
+    adam_parameters = []
+    muon_parameters = []
+
+    for name, param in model.named_parameters():
+        # 2D parameters only
+        if param.ndim == 2 and name.startswith("layers."):
+            muon_parameters.append(param)
+        else:
+            adam_parameters.append(param)
+
     model = torch.compile(model) if cfg.device == "cuda" else torch.compile(model, backend="aot_eager")
 
     optim = AdamWOptim(
-        model.parameters(),
+        adam_parameters,
         lr=cfg.optim.lr,
         weight_decay=cfg.optim.weight_decay,
         eps=cfg.optim.eps,
         betas=[cfg.optim.beta_1, cfg.optim.beta_2],
+    )
+
+    optim2 = MuonOptim(
+        muon_parameters,
+        lr=cfg.optim.lr,
+        weight_decay=cfg.optim.weight_decay,
+        momentum=cfg.optim.momentum,
     )
 
     # n=1 batch to test overfitting
@@ -82,9 +101,10 @@ def train(cfg):
             loss = cross_entropy(logits.float(), y)
 
         optim.zero_grad()
+        optim2.zero_grad()
         loss.backward()
         # Gradient clip at 1.0 following example of GPT-3, LlaMA, PaLM
-        gradient_clipping(model.parameters(), 1.0)
+        gradient_clipping(adam_parameters, 1.0)
 
         lr = get_lr_cosine_schedule(
             it=i,
@@ -95,7 +115,10 @@ def train(cfg):
         )
         for group in optim.param_groups:
             group["lr"] = lr
+        for group in optim2.param_groups:
+            group["lr"] = lr
         optim.step()
+        optim2.step()
 
         elapsed_minutes = (time.perf_counter() - start_time) / 60
         is_over_budget = cfg.max_minutes is not None and elapsed_minutes + window_minutes >= cfg.max_minutes
@@ -122,14 +145,14 @@ def train(cfg):
             model.train()
 
         if i > 0 and (i % cfg.checkpoint_interval == 0 or i == total_steps - 1 or is_over_budget):
-            save_checkpoint(model, optim, i, f"{run_dir}/ckpt_step_{i}.pt")
+            save_checkpoint(model, optim, i, f"{run_dir}/ckpt_step_{i}.pt", optim2)
 
         if i > 0 and i % cfg.log_interval == 0:
             window_minutes = elapsed_minutes - last_log_minutes
             last_log_minutes = elapsed_minutes
 
             loss_val = loss.item()
-            print(f"[train] step {i} loss {loss_val:.4f} {elapsed_minutes:.1f}m")
+            print(f"[train] step {i} loss {loss_val:.4f} {elapsed_minutes:.3f}m")
             if cfg.wandb:
                 wandb.log(
                     {
