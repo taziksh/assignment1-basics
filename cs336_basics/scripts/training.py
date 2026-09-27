@@ -21,6 +21,15 @@ from cs336_basics.transformer import TransformerLM
 from cs336_basics.config import TrainingConfig
 
 
+@torch.compile(backend="inductor" if torch.cuda.is_available() else "aot_eager")
+def fwd_loss(x, y, model, device):
+    with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"):
+        logits = model(x)
+        logits = rearrange(logits, "b s v -> (b s) v")
+        loss = cross_entropy(logits.float(), y)
+    return loss
+
+
 def train(cfg):
     torch.manual_seed(cfg.seed)
     if cfg.device == "cuda":
@@ -94,11 +103,7 @@ def train(cfg):
     for i in range(total_steps):
         x, y = get_batch(train_data, batch_size, context_length, device=cfg.device)
         y = rearrange(y, "b s -> (b s)")
-
-        with torch.autocast(device_type=cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"):
-            logits = model(x)
-            logits = rearrange(logits, "b s v -> (b s) v")
-            loss = cross_entropy(logits.float(), y)
+        loss = fwd_loss(x, y, model, cfg.device)
 
         optim.zero_grad()
         optim2.zero_grad()
