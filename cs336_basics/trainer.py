@@ -23,16 +23,17 @@ def newton_schulz_ortho(M: torch.Tensor, k: int):
     
     eps = 1e-7
 
-    if M.shape[0] > M.shape[1]:
-        return newton_schulz_ortho(M.T, k).T
+    # Flip tall matrices to minimize gram matrix
+    if M.shape[-2] > M.shape[-1]:
+        return newton_schulz_ortho(M.mT, k).mT
 
     in_dtype = M.dtype
     M = M.to(torch.bfloat16)
 
-    M_F = torch.linalg.norm(M, ord='fro')
+    M_F = torch.linalg.matrix_norm(M, ord='fro', keepdim=True)
     X = M / (M_F + eps)
     for _ in range(k):
-        gram = X@X.T
+        gram = X @ X.mT
         gram_times_X = gram @ X
         X = a * X + b * gram_times_X + c * gram @ gram_times_X
 
@@ -49,12 +50,14 @@ class MuonOptim(torch.optim.Optimizer):
         super().__init__(params, defaults)
 
     # https://arxiv.org/html/2502.16982v1#S2.SS1
+    @torch.no_grad()
     def step(self, closure: Callable | None = None):
         loss = None if closure is None else closure()
         for group in self.param_groups:
             lr = group["lr"]
             weight_decay = group["weight_decay"]
             momentum = group["momentum"]
+            params_by_shape = {}
             for p in group["params"]:
                 if p.grad is None:
                     continue
@@ -64,10 +67,16 @@ class MuonOptim(torch.optim.Optimizer):
                     state["B"] = torch.zeros_like(p)
 
                 state["B"] = momentum * state["B"] + p.grad
-                ortho_update = newton_schulz_ortho(momentum * state["B"] + p.grad, 5)
-                # Following Moonshot, match Muon's update RMS to Adam
-                with torch.no_grad():
-                    p -= lr * (0.2 * math.sqrt(max(p.shape)) * ortho_update + weight_decay * p)
+
+                # group params of same shape together so newton_schulz is batched
+                params_by_shape.setdefault(p.shape, []).append(p)
+
+            for params in params_by_shape.values():
+                nests = [self.state[p]["B"] * momentum + p.grad for p in params]
+                orthos = newton_schulz_ortho(torch.stack(nests), 5)
+                for p, ortho in zip(params, orthos):
+                    # Following Moonshot, match Muon's update RMS to Adam
+                    p -= lr * (0.2 * math.sqrt(max(p.shape)) * ortho + weight_decay * p)
 
         return loss
 
