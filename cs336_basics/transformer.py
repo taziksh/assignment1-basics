@@ -131,6 +131,7 @@ class MHASelfAttention(nn.Module):
         self.d_model = d_model
         self.d_k = d_model // num_heads
         self.rope = rope
+        self.lam = nn.Parameter(torch.tensor(0.5))
 
         # zero init final layer, per Appendix D.2 of https://arxiv.org/pdf/2203.03466
         nn.init.zeros_(self.output_proj.weight)
@@ -139,10 +140,15 @@ class MHASelfAttention(nn.Module):
         self,
         input_features: Float[torch.Tensor, " ... s d_model"],
         token_positions: Int[torch.Tensor, " ... s"] | None = None,
-    ) -> Float[torch.Tensor, " ... s d_model"]:
+        v1: Float[torch.Tensor, " ... h s d_k"] | None = None,
+    ) -> tuple[Float[torch.Tensor, " ... s d_model"], Float[torch.Tensor, " ... h s d_k"]]:
         Q = rearrange(self.q_proj(input_features), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
         K = rearrange(self.k_proj(input_features), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
         V = rearrange(self.v_proj(input_features), " ... s (h d_k) -> ... h s d_k", h=self.num_heads, d_k=self.d_k)
+        if v1 is None:
+            v1 = V
+
+        V = (1 - self.lam) * V + self.lam * v1
         s = input_features.shape[-2]
         mask = torch.tril(torch.ones(s, s, device=input_features.device, dtype=bool))
 
@@ -152,7 +158,7 @@ class MHASelfAttention(nn.Module):
 
         attn = scaled_dot_product_attention(Q, K, V, mask)
         attn = rearrange(attn, " ... h s d_k -> ... s (h d_k)")
-        return self.output_proj(attn)
+        return self.output_proj(attn), v1
 
 
 class TransformerBlock(nn.Module):
@@ -169,11 +175,12 @@ class TransformerBlock(nn.Module):
 
         self.ffn = SwiGLU(d_model, d_ff)
 
-    def forward(self, x):
+    def forward(self, x, v1=None):
         s = x.shape[-2]
         token_positions = torch.arange(s)
-        y = x + self.attn(input_features=self.ln1(x), token_positions=token_positions)
-        return y + self.ffn(self.ln2(y))
+        attn_out, v1 = self.attn(input_features=self.ln1(x), token_positions=token_positions, v1=v1)
+        y = x + attn_out
+        return y + self.ffn(self.ln2(y)), v1
 
 
 class TransformerLM(nn.Module):
@@ -203,8 +210,9 @@ class TransformerLM(nn.Module):
     def forward(self, in_indices: Int[torch.Tensor, " b s"]) -> Float[torch.Tensor, " b s vocab_size"]:
         out = self.token_embeddings(in_indices)
 
+        v1 = None
         for layer in self.layers:
-            out = layer(out)
+            out, v1 = layer(out, v1)
 
         out = self.ln_final(out)
 
