@@ -70,6 +70,9 @@ class SwiGLU(nn.Module):
         self.w2 = Linear(d_ff, d_model)
         self.w3 = Linear(d_model, d_ff)
 
+        # zero init final layer, per Appendix D.2 of https://arxiv.org/pdf/2203.03466
+        nn.init.zeros_(self.w2.weight)
+
     def forward(self, x: Float[torch.Tensor, " ... d_model"]):
         return self.w2(SiLU(self.w1(x)) * self.w3(x))
 
@@ -128,6 +131,9 @@ class MHASelfAttention(nn.Module):
         self.d_model = d_model
         self.d_k = d_model // num_heads
         self.rope = rope
+
+        # zero init final layer, per Appendix D.2 of https://arxiv.org/pdf/2203.03466
+        nn.init.zeros_(self.output_proj.weight)
 
     def forward(
         self,
