@@ -118,10 +118,16 @@ def train(cfg):
             warmup_iters=warmup_steps,
             cosine_cycle_iters=total_steps,
         )
+
+        warmup_frac = min(1, (i + 1) / (warmup_steps + 1))
+        momentum = 0.85 + warmup_frac * (cfg.optim.momentum - 0.85)
+
         for group in optim.param_groups:
             group["lr"] = lr
         for group in optim2.param_groups:
             group["lr"] = lr
+            group["momentum"] = momentum
+
         optim.step()
         optim2.step()
 
