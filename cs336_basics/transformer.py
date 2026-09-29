@@ -218,6 +218,6 @@ class TransformerLM(nn.Module):
 
         out = self.lm_head(out)
         # Logit soft-cap from Gemma 2 
-        out = 30 * torch.tanh(out / 30)
+        out = 15 * torch.tanh(out / 15)
 
         return out
