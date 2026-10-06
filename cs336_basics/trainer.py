@@ -179,15 +179,25 @@ def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: flo
 
 
 def get_batch(
-    dataset: npt.NDArray, batch_size: int, context_length: int, device: str
+    dataset: npt.NDArray, batch_size: int, context_length: int, device: str, generator: torch.Generator | None = None
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    starts = torch.randint(low=0, high=len(dataset) - context_length, size=(batch_size, 1))
+    starts = torch.randint(low=0, high=len(dataset) - context_length, size=(batch_size, 1), generator=generator)
     offsets = torch.arange(start=0, end=context_length).unsqueeze(dim=0)
     inputs = starts + offsets
     outputs = inputs + 1
     return torch.from_numpy(dataset[inputs.to("cpu")]).int().to(device), torch.from_numpy(
         dataset[outputs.to("cpu")]
     ).int().to(device)
+
+
+def get_sequential_batch(
+    dataset: npt.NDArray, index: int, batch_size: int, context_length: int, device: str
+) -> tuple[torch.Tensor, torch.Tensor]:
+    starts = (torch.arange(batch_size) + index * batch_size).unsqueeze(dim=1) * context_length
+    offsets = torch.arange(start=0, end=context_length).unsqueeze(dim=0)
+    inputs = starts + offsets
+    outputs = inputs + 1
+    return torch.from_numpy(dataset[inputs]).int().to(device), torch.from_numpy(dataset[outputs]).int().to(device)
 
 
 def save_checkpoint(
