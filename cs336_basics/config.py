@@ -40,7 +40,7 @@ class TrainingConfig:
     wandb_project: str = "cs336-1"
     log_interval: int = 100
     checkpoint_interval: int = 10_000
-    max_minutes: float | None = 90.0
+    max_minutes: float | None = 45
 
     device: Literal["mps", "cuda", "cpu"] = "mps"
     seed: int = 42
