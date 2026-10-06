@@ -35,8 +35,9 @@ class TrainingConfig:
     batch_size: int = 4
     total_steps: int | None = None
     total_tokens: int | None = None
-    val_interval: int = 100
-    final_val_batches: int = 32
+    val_interval: int = 500
+    val_batches: int = 128
+    val_seed: int = 0
 
     wandb: bool = False
     wandb_project: str = "cs336-1"

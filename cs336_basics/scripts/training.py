@@ -10,6 +10,7 @@ from dataclasses import asdict
 import tyro
 from cs336_basics.trainer import (
     get_batch,
+    get_sequential_batch,
     get_lr_cosine_schedule,
     cross_entropy,
     save_checkpoint,
@@ -28,6 +29,19 @@ def fwd_loss(x, y, model, device):
         logits = rearrange(logits, "b s v -> (b s) v")
         loss = cross_entropy(logits.float(), y)
     return loss
+
+
+def evaluate(model, batches, device):
+    model.eval()
+    loss_sum = torch.zeros((), device=device)
+    num_tokens = 0
+    with torch.no_grad(), torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"):
+        for x, y in batches:
+            logits = rearrange(model(x), "b s v -> (b s) v")
+            loss_sum += cross_entropy(logits.float(), rearrange(y, "b s -> (b s)")) * y.numel()
+            num_tokens += y.numel()
+    model.train()
+    return (loss_sum / num_tokens).item(), num_tokens
 
 
 def train(cfg):
@@ -97,7 +111,15 @@ def train(cfg):
     max_lr = cfg.optim.lr
     total_steps = cfg.total_steps
     warmup_steps = int(0.05 * total_steps)
+
+    val_gen = torch.Generator().manual_seed(cfg.val_seed)
+    val_set = [
+        get_batch(val_data, batch_size, context_length, device=cfg.device, generator=val_gen)
+        for _ in range(cfg.val_batches)
+    ]
+
     start_time = time.perf_counter()
+    paused_seconds = 0.0
     last_log_minutes = 0.0
     window_minutes = 0.0
     for i in range(total_steps):
@@ -131,29 +153,25 @@ def train(cfg):
         optim.step()
         optim2.step()
 
-        elapsed_minutes = (time.perf_counter() - start_time) / 60
+        elapsed_minutes = (time.perf_counter() - start_time - paused_seconds) / 60
         is_over_budget = cfg.max_minutes is not None and elapsed_minutes + window_minutes >= cfg.max_minutes
 
-        if i % cfg.val_interval == 0:
-            model.eval()
-            with (
-                torch.no_grad(),
-                torch.autocast(device_type=cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"),
-            ):
-                val_x, val_y = get_batch(val_data, batch_size, context_length, device=cfg.device)
-                val_logits = model(val_x)
-                val_logits = rearrange(val_logits, "b s v -> (b s) v")
-                val_y = rearrange(val_y, "b s -> (b s)")
+        if i % cfg.val_interval == 0 or i == total_steps - 1 or is_over_budget:
+            if cfg.device == "cuda":
+                torch.cuda.synchronize()
+            pause_start = time.perf_counter()
+            elapsed_minutes = (pause_start - start_time - paused_seconds) / 60
 
-                val_loss = cross_entropy(val_logits.float(), val_y)
+            val_loss, _ = evaluate(model, val_set, cfg.device)
+            if cfg.wandb:
+                wandb.log(
+                    {"val/loss": val_loss, "wallclock_min": elapsed_minutes},
+                    step=i,
+                )
 
-                if cfg.wandb:
-                    wandb.log(
-                        {"val/loss": val_loss.item(), "wallclock_min": elapsed_minutes},
-                        step=i,
-                    )
-
-            model.train()
+            if cfg.device == "cuda":
+                torch.cuda.synchronize()
+            paused_seconds += time.perf_counter() - pause_start
 
         if i > 0 and (i % cfg.checkpoint_interval == 0 or i == total_steps - 1 or is_over_budget):
             save_checkpoint(model, optim, i, f"{run_dir}/ckpt_step_{i}.pt", optim2)
@@ -176,21 +194,16 @@ def train(cfg):
         if is_over_budget:
             break
 
-    model.eval()
-    final_val_loss = 0.0
-    with torch.no_grad(), torch.autocast(device_type=cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"):
-        for _ in range(cfg.final_val_batches):
-            val_x, val_y = get_batch(val_data, batch_size, context_length, device=cfg.device)
-            val_logits = model(val_x)
-            val_logits = rearrange(val_logits, "b s v -> (b s) v")
-            val_y = rearrange(val_y, "b s -> (b s)")
-
-            final_val_loss += cross_entropy(val_logits.float(), val_y).item()
-    final_val_loss /= cfg.final_val_batches
-
-    print(f"[eval] final val loss {final_val_loss:.4f} over {cfg.final_val_batches} batches")
+    num_full_batches = (len(val_data) - 1) // context_length // batch_size
+    full_val_set = (
+        get_sequential_batch(val_data, k, batch_size, context_length, device=cfg.device)
+        for k in range(num_full_batches)
+    )
+    final_val_loss, final_val_tokens = evaluate(model, full_val_set, cfg.device)
+    print(f"[eval] final val loss {final_val_loss:.4f} over full val set ({final_val_tokens} tokens)")
     if cfg.wandb:
         wandb.run.summary["val/final_loss"] = final_val_loss
+        wandb.run.summary["val/final_tokens"] = final_val_tokens
 
 
 if __name__ == "__main__":
