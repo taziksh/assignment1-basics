@@ -18,7 +18,7 @@ class OptimConfig:
     lr: float = 0.001
     weight_decay: float = 0.1
     beta_1: float = 0.9
-    beta_2: float = 0.999
+    beta_2: float = 0.95
     eps: float = 1e-5
 
     momentum: float = 0.95

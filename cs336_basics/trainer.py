@@ -40,12 +40,24 @@ def newton_schulz_ortho(M: torch.Tensor, k: int):
     return X.to(in_dtype)
 
 
+@torch.compile(dynamic=False, backend="inductor" if torch.cuda.is_available() else "aot_eager")
+def normuon(ortho, v, beta_2, eps):
+    v_new = beta_2 * v + (1 - beta_2) * torch.mean(ortho * ortho, dim=-1, keepdim=True)
+    ortho_norm = ortho / (torch.sqrt(v_new) + eps)
+
+    _, m, n = ortho.shape
+    # Following Moonshot, match Muon's update RMS to Adam
+    return 0.2 * ortho_norm * math.sqrt(m * n) / (torch.linalg.matrix_norm(ortho_norm, ord="fro", keepdim=True) + eps), v_new
+
+
 class MuonOptim(torch.optim.Optimizer):
-    def __init__(self, params, lr, momentum, weight_decay):
+    def __init__(self, params, beta_2, eps, lr, momentum, weight_decay):
         defaults = {
             "lr": lr,
             "weight_decay": weight_decay,
             "momentum": momentum,
+            "beta_2": beta_2,
+            "eps": eps,
         }
         super().__init__(params, defaults)
 
@@ -57,6 +69,8 @@ class MuonOptim(torch.optim.Optimizer):
             lr = group["lr"]
             weight_decay = group["weight_decay"]
             momentum = group["momentum"]
+            beta_2 = group["beta_2"]
+            eps = group["eps"]
             params_by_shape = {}
             for p in group["params"]:
                 if p.grad is None:
@@ -65,6 +79,7 @@ class MuonOptim(torch.optim.Optimizer):
                 state = self.state[p]
                 if not state:
                     state["B"] = torch.zeros_like(p)
+                    state["v"] = torch.zeros(p.shape[0], 1, device=p.device)
 
                 state["B"] = momentum * state["B"] + p.grad
 
@@ -74,9 +89,14 @@ class MuonOptim(torch.optim.Optimizer):
             for params in params_by_shape.values():
                 nests = [self.state[p]["B"] * momentum + p.grad for p in params]
                 orthos = newton_schulz_ortho(torch.stack(nests), 5)
-                for p, ortho in zip(params, orthos):
-                    # Following Moonshot, match Muon's update RMS to Adam
-                    p -= lr * (0.2 * math.sqrt(max(p.shape)) * ortho + weight_decay * p)
+
+                vs = [self.state[p]["v"] for p in params]
+                updates, v_news = normuon(orthos, torch.stack(vs), beta_2, eps)
+
+                for p, update, v_new in zip(params, updates, v_news):
+                    self.state[p]["v"] = v_new
+                    p -= lr * (update + weight_decay * p)
+
 
         return loss
 

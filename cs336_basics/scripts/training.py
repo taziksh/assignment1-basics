@@ -84,6 +84,8 @@ def train(cfg):
         lr=cfg.optim.lr,
         weight_decay=cfg.optim.weight_decay,
         momentum=cfg.optim.momentum,
+        beta_2 = cfg.optim.beta_2, # same as Adam
+        eps=cfg.optim.eps
     )
 
     # n=1 batch to test overfitting
