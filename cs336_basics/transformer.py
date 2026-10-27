@@ -99,7 +99,8 @@ class RoPE(nn.Module):
 
 
 def softmax(in_features: Float[torch.Tensor, " ..."], dim: int) -> Float[torch.Tensor, " ..."]:
-    c = torch.max(in_features, dim=dim, keepdim=True).values
+    # can skip backprop for softmax maximum
+    c = torch.max(in_features, dim=dim, keepdim=True).values.detach()
     return torch.exp(in_features - c) / torch.sum(torch.exp(in_features - c), dim=dim, keepdim=True)
 
 
